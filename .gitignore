@@ -1,0 +1,15 @@
+*.db
+*.db-journal
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+uploads/
+trace/
+*.pickle
+*.json
+*.log 

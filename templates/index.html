@@ -1,0 +1,2039 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TT-NN Trace Viewer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            background-color: #f8f9fa;
+            padding: 15px;
+            overflow-y: auto;
+            transition: width 0.3s;
+        }
+        
+        .left-sidebar {
+            width: 300px;
+            border-right: 1px solid #dee2e6;
+        }
+        
+        .middle-sidebar {
+            width: 250px;
+            border-right: 1px solid #dee2e6;
+        }
+        
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .right-sidebar {
+            width: 400px;
+            border-left: 1px solid #dee2e6;
+            position: relative;
+            transition: width 0.3s;
+        }
+        
+        .toggle-button {
+            position: absolute;
+            z-index: 1000;
+            width: 20px;
+            height: 60px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #6c757d;
+            transition: all 0.3s;
+        }
+        
+        .toggle-button:hover {
+            background-color: #e9ecef;
+            color: #495057;
+        }
+        
+        .left-toggle {
+            left: 300px;
+            top: 50%;
+            transform: translateY(-50%);
+            border-left: none;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .right-toggle {
+            top: 50%;
+            transform: translateY(-50%);
+            border-right: none;
+            border-radius: 4px 0 0 4px;
+            position: absolute;
+            right: 400px; /* Changed from 420px to 400px */
+            left: auto;
+        }
+        
+        .hidden + .toggle-button.left-toggle {
+            left: 0;
+        }
+        
+        .hidden {
+            width: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            overflow: hidden;
+        }
+        
+        .hidden.right-sidebar {
+            width: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            margin-right: 0 !important;
+        }
+        
+        .hidden.right-sidebar .filter-section {
+            display: none;
+        }
+        
+        .upload-group {
+            margin-bottom: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        
+        .upload-header {
+            background-color: #e9ecef;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        
+        .upload-content {
+            padding: 10px;
+        }
+        
+        .trace-item {
+            padding: 6px 10px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+        
+        .trace-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .trace-item.selected {
+            background-color: #e9ecef;
+        }
+        
+        .trace-name {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .trace-count {
+            color: #6c757d;
+            font-size: 0.85em;
+            white-space: nowrap;
+            min-width: 50px;
+            text-align: right;
+        }
+        
+        .upload-count {
+            color: #6c757d;
+            font-size: 0.85em;
+            white-space: nowrap;
+        }
+        
+        .column-item {
+            padding: 6px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+        }
+        
+        .column-item:hover {
+            background-color: #e9ecef;
+            border-color: #dee2e6;
+        }
+        
+        .column-item span {
+            margin-bottom: 3px;
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        .filter-input {
+            width: 100%;
+            padding: 4px 6px;
+            margin-top: 2px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        
+        .filter-input:focus {
+            outline: none;
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.1rem rgba(13, 110, 253, 0.25);
+        }
+        
+        .delete-button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .delete-button:hover {
+            background-color: #c82333;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 8px;
+            border: 1px solid #dee2e6;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #f8f9fa;
+            position: sticky;
+            top: 0;
+        }
+        
+        .search-box {
+            margin-bottom: 12px;
+            padding: 8px;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            margin-bottom: 5px;
+        }
+        
+        .filter-section {
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .filter-section h4 {
+            margin: 0 0 8px 0;
+            color: #212529;
+            font-weight: 600;
+        }
+        
+        .common-filter {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        
+        .common-filter h4 {
+            margin-bottom: 8px;
+        }
+        
+        .common-filter textarea {
+            width: 100%;
+            min-height: 80px;
+            margin: 2px 0 6px 0;
+            padding: 6px 8px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+            resize: vertical;
+        }
+        
+        .common-filter textarea:focus {
+            outline: none;
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.1rem rgba(13, 110, 253, 0.25);
+        }
+        
+        .common-filter .help-text {
+            font-size: 0.8em;
+            color: #6c757d;
+            margin-top: 3px;
+            line-height: 1.3;
+        }
+        
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .toast {
+            background: white;
+            border-radius: 4px;
+            padding: 15px 20px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-width: 300px;
+            max-width: 500px;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        .toast.success {
+            border-left: 4px solid #28a745;
+        }
+        
+        .toast.error {
+            border-left: 4px solid #dc3545;
+        }
+        
+        .toast-close {
+            background: none;
+            border: none;
+            color: #6c757d;
+            cursor: pointer;
+            font-size: 1.25rem;
+            padding: 0;
+            margin-left: 10px;
+        }
+        
+        .toast-close:hover {
+            color: #343a40;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes fadeOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        
+        .view-mode-toggle {
+            margin-bottom: 8px;
+            padding: 8px;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .consolidated-trace {
+            margin-bottom: 15px;
+            padding: 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background-color: white;
+        }
+        
+        .consolidated-trace:hover {
+            background-color: #f8f9fa;
+            cursor: pointer;
+        }
+        
+        .consolidated-trace.selected {
+            background-color: #e9ecef;
+        }
+        
+        .consolidated-stats {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .upload-name {
+            cursor: pointer;
+        }
+        
+        .upload-name:hover {
+            text-decoration: underline;
+            color: #0d6efd;
+        }
+        
+        .rename-input {
+            border: none;
+            border-bottom: 1px solid #dee2e6;
+            background: transparent;
+            padding: 2px 5px;
+            width: 200px;
+        }
+        
+        .rename-input:focus {
+            outline: none;
+            border-bottom-color: #0d6efd;
+        }
+        
+        .trace-list {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background: white;
+        }
+        
+        .trace-item:last-child {
+            border-bottom: none;
+        }
+        
+        .trace-stats {
+            color: #6c757d;
+            font-size: 0.85em;
+            margin-top: 4px;
+        }
+        
+        .column-filters {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        
+        .column-filters h4 {
+            margin-bottom: 8px;
+        }
+        
+        .custom-parsers {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        
+        .custom-parsers h4 {
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .custom-parsers h4 button {
+            font-size: 0.8em;
+            padding: 2px 6px;
+        }
+        
+        .parser-item {
+            padding: 6px;
+            margin-bottom: 8px;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+        }
+        
+        .parser-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .parser-name {
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        .parser-actions {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .parser-actions button {
+            padding: 2px 5px;
+            font-size: 0.8em;
+        }
+        
+        .parser-code {
+            width: 100%;
+            min-height: 60px;
+            padding: 4px 6px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+            resize: vertical;
+        }
+        
+        .parser-code:focus {
+            outline: none;
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.1rem rgba(13, 110, 253, 0.25);
+        }
+        
+        .parser-test {
+            margin-top: 5px;
+            display: flex;
+            gap: 5px;
+        }
+        
+        .parser-test input {
+            flex: 1;
+            padding: 3px 5px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+        
+        .parser-test-result {
+            margin-top: 3px;
+            font-size: 0.85em;
+            font-family: monospace;
+            color: #495057;
+        }
+        
+        .parser-example {
+            margin-top: 5px;
+            font-size: 0.8em;
+            color: #6c757d;
+        }
+        
+        /* Parser editor modal styles */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+        
+        .modal-content {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .modal-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        .code-editor-container {
+            position: relative;
+            height: 300px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        #monaco-editor {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .autocomplete-container {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 10;
+            display: none;
+        }
+        
+        .autocomplete-item {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        
+        .autocomplete-item:hover, .autocomplete-item.selected {
+            background-color: #f8f9fa;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.1rem rgba(13, 110, 253, 0.25);
+        }
+    </style>
+</head>
+<body>
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <div class="header">
+        <h1>TT-NN Trace Viewer</h1>
+        <div class="upload-section">
+            <button class="btn btn-primary" onclick="document.getElementById('hiddenFileInput').click()">
+                Upload JSON
+            </button>
+            <input type="file" id="hiddenFileInput" accept=".json" style="display: none;">
+        </div>
+    </div>
+    
+    <div class="main-container">
+        <div class="sidebar left-sidebar" id="leftSidebar">
+            <div class="view-mode-toggle">
+                <div class="btn-group w-100">
+                    <button class="btn btn-outline-primary active" onclick="setViewMode('by_upload')" id="byUploadBtn">
+                        By Upload
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="setViewMode('consolidated')" id="consolidatedBtn">
+                        Consolidated
+                    </button>
+                </div>
+            </div>
+            <div class="search-box">
+                <input type="text" class="search-input" id="uploadFilter" 
+                       placeholder="Filter uploads..." 
+                       onkeyup="filterUploads()">
+                <input type="text" class="search-input" id="traceFilter" 
+                       placeholder="Filter traces..."
+                       onkeyup="filterTraces()">
+            </div>
+            <div id="uploadsList"></div>
+        </div>
+        <button class="toggle-button left-toggle" onclick="toggleSidebar('left')">
+            <i class="bi bi-chevron-left"></i>
+        </button>
+        
+        <div class="main-content">
+            <div id="traceData"></div>
+        </div>
+        
+        <button class="toggle-button right-toggle" onclick="toggleSidebar('right')">
+            <i class="bi bi-chevron-right"></i>
+        </button>
+        <div class="sidebar right-sidebar" id="rightSidebar">
+            <div class="filter-section">
+                <div class="common-filter">
+                    <h4>Common Filter</h4>
+                    <textarea id="commonFilter" placeholder="// Example: Filter by multiple columns
+(row) => {
+  return row.arg0?.includes('test') &&
+         parseInt(row.arg1) > 100;
+}"></textarea>
+                    <div class="help-text">
+                        Filter across multiple columns using JavaScript.
+                        Access columns as row.arg0, row.arg1, etc.
+                        Press Enter to apply.
+                    </div>
+                </div>
+                <div class="column-filters">
+                    <h4>Column Filters</h4>
+                    <div id="columnsList"></div>
+                </div>
+                <div class="custom-parsers">
+                    <h4>
+                        Custom Parsers
+                        <button class="btn btn-sm btn-outline-primary" onclick="addNewParser()">Add New</button>
+                    </h4>
+                    <div id="parsersList"></div>
+                    <div class="parser-example">
+                        Example: Parse tensor shape from "Tensor[8x384x1024|BFLOAT16|INTERLEAVED|L1]"
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Parser Editor Modal -->
+    <div class="modal-backdrop" id="parserEditorModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Parser Function</h5>
+                <button type="button" class="btn-close" onclick="closeParserEditor()"></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group mb-3">
+                    <label for="editorContainer">Parser Code:</label>
+                    <div id="editorContainer" style="height: 300px; border: 1px solid #ccc;"></div>
+                    <div class="text-muted small mt-1">
+                        <p><strong>Parser Function Tips:</strong></p>
+                        <ul>
+                            <li>Your function will receive the tensor string as the parameter (any parameter name works).</li>
+                            <li>Example formats: <code>function tensorShape(x) {...}</code> or <code>const tensorShape = (x) => {...}</code></li>
+                            <li>Function name will be auto-detected and used as the parser name if not specified.</li>
+                            <li>Use the Test button to verify your function works properly.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="testInput">Test Input</label>
+                    <div class="input-group">
+                        <input type="text" id="testInput" class="form-control" placeholder="Enter test input" value="Tensor[8x384x1024|BFLOAT16|INTERLEAVED|L1]">
+                        <button class="btn btn-outline-secondary" type="button" onclick="testParserInEditor()">Test</button>
+                    </div>
+                </div>
+                <div id="testResult" style="display: none;" class="alert mt-2"></div>
+                <div class="form-group">
+                    <label for="parserName">Override Parser Name</label>
+                    <input type="text" id="parserName" class="form-control" placeholder="Optional custom name (defaults to function name)">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeParserEditor()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveParser()">Save Parser</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTrace = null;
+        let columnFilters = {};
+        let uploads = [];
+        let filteredUploads = [];
+        let viewMode = 'by_upload';
+        let commonFilterFn = null;
+        let customParsers = {};
+        let editorIsNew = false;
+        let currentParserName = '';
+        let monacoEditor = null;
+        
+        // Initialize Monaco Editor when the page loads
+        require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' }});
+        require(['vs/editor/editor.main'], function() {
+            // Monaco is now loaded and ready to be used
+        });
+        
+        function initializeMonacoEditor(code = '') {
+            if (monacoEditor) {
+                monacoEditor.dispose();
+            }
+            
+            monacoEditor = monaco.editor.create(document.getElementById('editorContainer'), {
+                value: code,
+                language: 'javascript',
+                theme: 'vs',
+                automaticLayout: true,
+                minimap: { enabled: false },
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                fixedOverflowWidgets: true
+            });
+            
+            // Add event listener for extract function name on change
+            monacoEditor.onDidChangeModelContent(function() {
+                extractFunctionName();
+            });
+            
+            // Set up auto-completion suggestions specific to tensor processing
+            monaco.languages.registerCompletionItemProvider('javascript', {
+                provideCompletionItems: function(model, position) {
+                    const textUntilPosition = model.getValueInRange({
+                        startLineNumber: position.lineNumber,
+                        startColumn: 1,
+                        endLineNumber: position.lineNumber,
+                        endColumn: position.column
+                    });
+                    
+                    const suggestions = [];
+                    
+                    // Add suggestions related to tensor parsing
+                    if (textUntilPosition.includes('x.')) {
+                        const stringMethods = [
+                            {
+                                label: 'match',
+                                kind: monaco.languages.CompletionItemKind.Method,
+                                insertText: 'match(${1:/Tensor\\\\[(\\\\d+)x(\\\\d+)/})',
+                                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                detail: 'String.prototype.match()',
+                                documentation: 'Retrieves the result of matching a string against a regular expression.'
+                            },
+                            {
+                                label: 'split',
+                                kind: monaco.languages.CompletionItemKind.Method,
+                                insertText: 'split(${1:\'|\'})',
+                                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                detail: 'String.prototype.split()',
+                                documentation: 'Splits a String object into an array of strings by separating the string into substrings.'
+                            },
+                            {
+                                label: 'replace',
+                                kind: monaco.languages.CompletionItemKind.Method,
+                                insertText: 'replace(${1:/\\\\]|\\\\[/g}, ${2:\'\'})',
+                                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                detail: 'String.prototype.replace()',
+                                documentation: 'Returns a new string with some or all matches of a pattern replaced by a replacement.'
+                            }
+                        ];
+                        suggestions.push(...stringMethods);
+                    }
+                    
+                    // Add tensor-related snippet suggestions
+                    if (position.column === 1) {
+                        suggestions.push({
+                            label: 'tensorShape',
+                            kind: monaco.languages.CompletionItemKind.Snippet,
+                            insertText: [
+                                'function tensorShape(x) {',
+                                '  // Extract shape from tensor string',
+                                '  const match = x.match(/Tensor\\\\[(.*?)\\\\|/);',
+                                '  if (match) {',
+                                '    return match[1].split("x").map(Number);',
+                                '  }',
+                                '  return null;',
+                                '}'
+                            ].join('\n'),
+                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                            detail: 'Extract tensor shape',
+                            documentation: 'Function to extract shape dimensions from tensor string'
+                        });
+                        
+                        suggestions.push({
+                            label: 'tensorDtype',
+                            kind: monaco.languages.CompletionItemKind.Snippet,
+                            insertText: [
+                                'function tensorDtype(x) {',
+                                '  // Extract dtype from tensor string',
+                                '  const match = x.match(/\\\\|(\\\\w+)\\\\|/);',
+                                '  return match ? match[1] : null;',
+                                '}'
+                            ].join('\n'),
+                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                            detail: 'Extract tensor dtype',
+                            documentation: 'Function to extract data type from tensor string'
+                        });
+                    }
+                    
+                    return { suggestions: suggestions };
+                }
+            });
+            
+            return monacoEditor;
+        }
+        
+        // Load uploads on page load
+        window.onload = function() {
+            loadUploads();
+            loadCustomParsers();
+            
+            // Initialize toggle buttons
+            const rightToggle = document.querySelector('.right-toggle');
+            if (rightToggle) {
+                const rightSidebar = document.getElementById('rightSidebar');
+                if (rightSidebar && rightSidebar.classList.contains('hidden')) {
+                    rightToggle.style.right = '0px';
+                } else {
+                    rightToggle.style.right = '400px'; // Changed from 420px to 400px
+                }
+            }
+        };
+        
+        function setViewMode(mode) {
+            viewMode = mode;
+            document.getElementById('byUploadBtn').classList.toggle('active', mode === 'by_upload');
+            document.getElementById('consolidatedBtn').classList.toggle('active', mode === 'consolidated');
+            document.getElementById('uploadFilter').placeholder = mode === 'by_upload' ? 'Filter uploads...' : 'Filter traces...';
+            document.getElementById('traceFilter').style.display = mode === 'by_upload' ? 'block' : 'none';
+            loadUploads();
+        }
+        
+        function loadUploads() {
+            fetch(`/api/uploads?mode=${viewMode}`)
+                .then(response => response.json())
+                .then(data => {
+                    uploads = data;
+                    
+                    // Sort uploads by date (newest first) if in by_upload mode
+                    if (viewMode === 'by_upload') {
+                        uploads.sort((a, b) => {
+                            // Assuming each upload has a timestamp or id that can be used for sorting
+                            // If there's an explicit timestamp field, use that
+                            if (a.timestamp && b.timestamp) {
+                                return new Date(b.timestamp) - new Date(a.timestamp);
+                            }
+                            // Otherwise, use the upload ID (assuming higher ID = newer upload)
+                            return b.id - a.id;
+                        });
+                    }
+                    
+                    filteredUploads = [...uploads];
+                    displayUploadsList();
+                });
+        }
+        
+        function filterUploads() {
+            const searchTerm = document.getElementById('uploadFilter').value.toLowerCase();
+            
+            if (viewMode === 'consolidated') {
+                // For consolidated view, filter the traces directly
+                const filteredTraces = uploads.filter(trace => 
+                    trace.filename.toLowerCase().includes(searchTerm)
+                );
+                displayUploadsList();
+            } else {
+                // For by-upload view, filter both uploads and traces
+                filteredUploads = uploads.filter(upload => {
+                    const uploadMatches = upload.name.toLowerCase().includes(searchTerm);
+                    const hasMatchingTraces = upload.traces.some(trace => 
+                        trace.filename.toLowerCase().includes(searchTerm)
+                    );
+                    return uploadMatches || hasMatchingTraces;
+                });
+                
+                // Keep uploads sorted by date (newest first)
+                filteredUploads.sort((a, b) => {
+                    // If there's an explicit timestamp field, use that
+                    if (a.timestamp && b.timestamp) {
+                        return new Date(b.timestamp) - new Date(a.timestamp);
+                    }
+                    // Otherwise, use the upload ID (assuming higher ID = newer upload)
+                    return b.id - a.id;
+                });
+                
+                displayUploadsList();
+            }
+        }
+        
+        function filterTraces() {
+            if (viewMode === 'consolidated') {
+                // In consolidated view, this is handled by filterUploads
+                return;
+            }
+            
+            const searchTerm = document.getElementById('traceFilter').value.toLowerCase();
+            displayUploadsList(searchTerm);
+        }
+        
+        function displayUploadsList(traceFilter = '') {
+            const uploadsDiv = document.getElementById('uploadsList');
+            uploadsDiv.innerHTML = '';
+            
+            if (viewMode === 'consolidated') {
+                const searchTerm = document.getElementById('uploadFilter').value.toLowerCase();
+                const filteredTraces = uploads.filter(trace => 
+                    trace.filename.toLowerCase().includes(searchTerm)
+                );
+                
+                // Sort traces alphabetically by filename
+                filteredTraces.sort((a, b) => a.filename.localeCompare(b.filename));
+                
+                const traceList = document.createElement('div');
+                traceList.className = 'trace-list';
+                
+                filteredTraces.forEach(trace => {
+                    const traceDiv = document.createElement('div');
+                    traceDiv.className = 'trace-item';
+                    if (currentTrace && currentTrace.filename === trace.filename) {
+                        traceDiv.classList.add('selected');
+                    }
+                    
+                    traceDiv.innerHTML = `
+                        <div class="trace-name">
+                            ${trace.filename}
+                            <span class="trace-count">${trace.row_count.toLocaleString()} rows</span>
+                        </div>
+                    `;
+                    
+                    traceDiv.onclick = () => selectConsolidatedTrace(trace);
+                    traceList.appendChild(traceDiv);
+                });
+                
+                uploadsDiv.appendChild(traceList);
+            } else {
+                filteredUploads.forEach(upload => {
+                    const validTraces = upload.traces.filter(trace => 
+                        !trace.error && (!traceFilter || 
+                        trace.filename.toLowerCase().includes(traceFilter.toLowerCase()))
+                    );
+                    
+                    if (validTraces.length === 0) return;
+                    
+                    // Sort traces alphabetically by filename
+                    validTraces.sort((a, b) => a.filename.localeCompare(b.filename));
+                    
+                    const uploadGroup = document.createElement('div');
+                    uploadGroup.className = 'upload-group';
+                    
+                    const uploadHeader = document.createElement('div');
+                    uploadHeader.className = 'upload-header';
+                    uploadHeader.innerHTML = `
+                        <span class="upload-name" onclick="startRename(${upload.id}, '${upload.name}', event)">${upload.name}</span>
+                        <button class="delete-button" onclick="deleteUpload(${upload.id}, event)">Delete</button>
+                    `;
+                    uploadGroup.appendChild(uploadHeader);
+                    
+                    const uploadContent = document.createElement('div');
+                    uploadContent.className = 'upload-content';
+                    
+                    validTraces.forEach(trace => {
+                        const traceDiv = document.createElement('div');
+                        traceDiv.className = 'trace-item';
+                        traceDiv.innerHTML = `
+                            <div class="trace-name">${trace.filename}</div>
+                            <div class="trace-count">${trace.row_count} rows</div>
+                        `;
+                        traceDiv.onclick = () => selectTrace(trace);
+                        uploadContent.appendChild(traceDiv);
+                    });
+                    
+                    uploadGroup.appendChild(uploadContent);
+                    uploadsDiv.appendChild(uploadGroup);
+                });
+            }
+        }
+        
+        function deleteUpload(uploadId, event) {
+            event.stopPropagation();
+            if (!confirm('Are you sure you want to delete this upload?')) {
+                return;
+            }
+            
+            fetch(`/api/upload/${uploadId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadUploads();
+                } else {
+                    alert('Failed to delete upload: ' + data.error);
+                }
+            });
+        }
+        
+        function selectTrace(trace) {
+            currentTrace = trace;
+            document.querySelectorAll('.trace-item').forEach(el => el.classList.remove('selected'));
+            event.target.classList.add('selected');
+            displayColumns(trace);
+            loadTraceData(trace.id);
+        }
+        
+        function selectConsolidatedTrace(trace) {
+            currentTrace = trace;
+            
+            // Update selection visual
+            document.querySelectorAll('.trace-item').forEach(el => {
+                el.classList.toggle('selected', 
+                    el.querySelector('.trace-name').textContent === trace.filename);
+            });
+            
+            // Display columns
+            displayColumns(trace);
+            
+            // Load consolidated data
+            fetch(`/api/consolidated-trace/${encodeURIComponent(trace.filename)}/values`)
+                .then(response => response.json())
+                .then(data => {
+                    displayTraceData(data);
+                });
+        }
+        
+        function displayColumns(trace) {
+            const columnsDiv = document.getElementById('columnsList');
+            columnsDiv.innerHTML = '';
+            
+            if (!trace.columns || !trace.columns.length) {
+                columnsDiv.innerHTML = '<p>No columns available</p>';
+                return;
+            }
+            
+            // Setup common filter
+            const commonFilter = document.getElementById('commonFilter');
+            commonFilter.value = commonFilterFn ? commonFilterFn.source : '';
+            commonFilter.onchange = (e) => {
+                const filterExpr = e.target.value.trim();
+                try {
+                    if (filterExpr) {
+                        commonFilterFn = new Function('row', `return (${filterExpr})(row)`);
+                        commonFilterFn.source = filterExpr;
+                    } else {
+                        commonFilterFn = null;
+                    }
+                    
+                    if (viewMode === 'consolidated') {
+                        fetch(`/api/consolidated-trace/${encodeURIComponent(trace.filename)}/values`)
+                            .then(response => response.json())
+                            .then(data => {
+                                displayTraceData(data);
+                            });
+                    } else {
+                        loadTraceData(currentTrace.id);
+                    }
+                } catch (e) {
+                    alert('Invalid common filter expression: ' + e.message);
+                }
+            };
+            
+            // Display individual column filters
+            trace.columns.forEach(column => {
+                if (column.startsWith('_upload_')) return; // Skip upload info columns
+                
+                const columnDiv = document.createElement('div');
+                columnDiv.className = 'column-item';
+                
+                const filterInput = document.createElement('input');
+                filterInput.type = 'text';
+                filterInput.className = 'filter-input';
+                filterInput.placeholder = 'Filter with JS (e.g. x => tensor_shape(x)[0] === 8)';
+                filterInput.value = columnFilters[column] ? columnFilters[column].source : '';
+                
+                filterInput.onchange = (e) => {
+                    const filterExpr = e.target.value.trim();
+                    try {
+                        if (filterExpr) {
+                            // Store the original filter expression
+                            let filterFunction;
+                            
+                            // Special case for tensorShape(x).length checks - one of the most common cases
+                            if (filterExpr.match(/tensorShape\s*\(\s*x\s*\)\s*\.\s*length/)) {
+                                console.log("[FILTER] Using special handler for tensorShape.length");
+                                // Create a direct function to avoid issues with complex expressions
+                                filterFunction = function(x) {
+                                    if (!x || typeof x !== 'string') return false;
+                                    
+                                    try {
+                                        // Use a more reliable regex that won't have issues with matching
+                                        const match = x.match(/Tensor\[([^|]+)/);
+                                        if (!match) return false;
+                                        
+                                        // Get dimensions directly
+                                        const dimensions = match[1].split('x').map(dim => parseInt(dim, 10));
+                                        
+                                        // Handle common comparison operators
+                                        if (filterExpr.includes('>')) {
+                                            const valueToCompare = parseInt(filterExpr.split('>')[1].trim(), 10);
+                                            return dimensions.length > valueToCompare;
+                                        } else if (filterExpr.includes('<')) {
+                                            const valueToCompare = parseInt(filterExpr.split('<')[1].trim(), 10);
+                                            return dimensions.length < valueToCompare;
+                                        } else if (filterExpr.includes('===')) {
+                                            const valueToCompare = parseInt(filterExpr.split('===')[1].trim(), 10);
+                                            return dimensions.length === valueToCompare;
+                                        } else if (filterExpr.includes('==')) {
+                                            const valueToCompare = parseInt(filterExpr.split('==')[1].trim(), 10);
+                                            return dimensions.length === valueToCompare;
+                                        }
+                                        
+                                        // Fallback to checking if length exists (truthy)
+                                        return dimensions.length > 0;
+                                    } catch (e) {
+                                        console.warn("Special tensorShape handler error:", e);
+                                        return false;
+                                    }
+                                };
+                            } else if (filterExpr.includes('=>')) {
+                                // It's an arrow function - use the general approach
+                                filterFunction = new Function('x', `
+                                    // For debugging
+                                    console.log("[FILTER] Processing arrow function with input:", x);
+                                    
+                                    try {
+                                        // Try direct evaluation of the expression
+                                        return ${filterExpr}(x);
+                                    } catch(e) {
+                                        console.warn("Filter evaluation error:", e);
+                                        return false;
+                                    }
+                                `);
+                            } else {
+                                // For simple expressions, try a more reliable approach
+                                filterFunction = new Function('x', `
+                                    // For debugging
+                                    console.log("[FILTER] Processing expression with input:", x);
+                                    
+                                    // Pre-process value
+                                    if (!x || typeof x !== 'string') {
+                                        console.log("[FILTER] Input is not a valid string");
+                                        return false;
+                                    }
+                                    
+                                    try {
+                                        // Make debug_parser/debug_tensorShape available
+                                        if (typeof window.debug_parser === 'function') {
+                                            var debug_parser = window.debug_parser;
+                                        }
+                                        
+                                        if (typeof window.debug_tensorShape === 'function') {
+                                            var debug_tensorShape = window.debug_tensorShape;
+                                        }
+                                        
+                                        // Directly try the real tensorShape if that's what's being used
+                                        if (${filterExpr.includes('tensorShape')}) {
+                                            // Use a more reliable approach for tensorShape
+                                            const match = x.match(/Tensor\\[([^|]+)/);
+                                            if (!match) return false;
+                                            
+                                            const dimensions = match[1].split('x').map(dim => parseInt(dim, 10));
+                                            const tensorShapeResult = dimensions;
+                                            
+                                            // Now substitute it into the expression
+                                            const modifiedExpr = \`\${filterExpr.replace('tensorShape(x)', JSON.stringify(tensorShapeResult))}\`;
+                                            console.log("[FILTER] Modified expression:", modifiedExpr);
+                                            
+                                            return eval(modifiedExpr);
+                                        }
+                                        
+                                        // For other expressions, try direct evaluation
+                                        return eval(${JSON.stringify(filterExpr)});
+                                    } catch(e) {
+                                        console.warn("Filter expression error:", e);
+                                        return false;
+                                    }
+                                `);
+                            }
+                            
+                            // Store the filter function
+                            columnFilters[column] = filterFunction;
+                            columnFilters[column].source = filterExpr;
+                        } else {
+                            delete columnFilters[column];
+                        }
+                        
+                        if (viewMode === 'consolidated') {
+                            fetch(`/api/consolidated-trace/${encodeURIComponent(trace.filename)}/values`)
+                                .then(response => response.json())
+                                .then(data => {
+                                    displayTraceData(data);
+                                });
+                        } else {
+                            loadTraceData(currentTrace.id);
+                        }
+                    } catch (e) {
+                        alert('Invalid filter expression: ' + e.message);
+                    }
+                };
+                
+                const columnName = document.createElement('span');
+                columnName.textContent = column;
+                columnDiv.appendChild(columnName);
+                columnDiv.appendChild(filterInput);
+                columnsDiv.appendChild(columnDiv);
+            });
+        }
+        
+        function loadTraceData(traceId) {
+            fetch(`/api/trace/${traceId}/values`)
+                .then(response => response.json())
+                .then(data => {
+                    const filteredData = data.filter(row => {
+                        return Object.entries(columnFilters).every(([column, filterFn]) => {
+                            try {
+                                const value = row[column];
+                                return value === null || value === undefined || filterFn(value.toString());
+                            } catch (e) {
+                                console.error('Filter error:', e);
+                                return false;
+                            }
+                        });
+                    });
+                    
+                    displayTraceData(filteredData);
+                });
+        }
+        
+        function displayTraceData(data) {
+            const dataDiv = document.getElementById('traceData');
+            if (!data || !data.length) {
+                dataDiv.innerHTML = '<p>No data available</p>';
+                return;
+            }
+            
+            // Make custom parsers available in the global scope for filters to use
+            for (const [name, parserFn] of Object.entries(customParsers)) {
+                window[name] = parserFn;
+            }
+            
+            const columns = Object.keys(data[0])
+                .filter(key => key !== 'id')
+                .sort((a, b) => {
+                    // Show upload info columns last
+                    const aIsUpload = a.startsWith('_upload_');
+                    const bIsUpload = b.startsWith('_upload_');
+                    if (aIsUpload && !bIsUpload) return 1;
+                    if (!aIsUpload && bIsUpload) return -1;
+                    return a.localeCompare(b);
+                });
+            
+            let table = '<table><thead><tr>';
+            columns.forEach(column => {
+                const displayName = column.startsWith('_upload_') 
+                    ? column.replace('_upload_', 'Upload ').replace(/_/g, ' ') 
+                    : column;
+                table += `<th>${displayName}</th>`;
+            });
+            table += '</tr></thead><tbody>';
+            
+            const filteredData = data.filter(row => {
+                // Apply common filter first
+                if (commonFilterFn) {
+                    try {
+                        if (!commonFilterFn(row)) return false;
+                    } catch (e) {
+                        console.error('Common filter error:', e);
+                        return false;
+                    }
+                }
+                
+                // Then apply column filters
+                return Object.entries(columnFilters).every(([column, filterFn]) => {
+                    try {
+                        const value = row[column];
+                        if (value === null || value === undefined) return true;
+                        
+                        // Check if any parsers are missing before we try to filter
+                        const parserRegex = /\b(tensor[A-Za-z_]+|[a-zA-Z_]+[sS]hape|[a-zA-Z_]+_[a-zA-Z_]+)\s*\(/g;
+                        let match;
+                        let missingParser = false;
+                        const filterSource = filterFn.source || '';
+                        
+                        // Reset regex state
+                        parserRegex.lastIndex = 0;
+                        
+                        while ((match = parserRegex.exec(filterSource)) !== null) {
+                            const parserName = match[1];
+                            if (typeof window[parserName] !== 'function') {
+                                console.warn(`Parser '${parserName}' referenced in filter but not defined`);
+                                missingParser = true;
+                                break;
+                            }
+                        }
+                        
+                        if (missingParser) {
+                            return false; // Skip rows where we can't evaluate the filter due to missing parsers
+                        }
+                        
+                        // For debug, log the actual filter function
+                        console.log("[FILTER APPLICATION] Filter source:", filterSource);
+                        console.log("[FILTER APPLICATION] Input value:", value);
+                        
+                        // Directly use the filter - skip the safeFilterFn approach
+                        const result = filterFn(value.toString());
+                        console.log("[FILTER APPLICATION] Filter result:", result);
+                        
+                        return result;
+                    } catch (e) {
+                        console.error(`Filter error on column ${column}:`, e);
+                        return false;
+                    }
+                });
+            });
+            
+            filteredData.forEach(row => {
+                table += '<tr>';
+                columns.forEach(column => {
+                    let value = row[column] || '';
+                    if (column === '_upload_time') {
+                        value = new Date(value).toLocaleString();
+                    }
+                    table += `<td>${value}</td>`;
+                });
+                table += '</tr>';
+            });
+            
+            table += '</tbody></table>';
+            dataDiv.innerHTML = table;
+        }
+        
+        function toggleSidebar(side) {
+            const sidebar = document.getElementById(side === 'left' ? 'leftSidebar' : 'rightSidebar');
+            const button = document.querySelector(`.${side}-toggle`);
+            const icon = button.querySelector('.bi');
+            
+            if (sidebar.classList.contains('hidden')) {
+                sidebar.classList.remove('hidden');
+                icon.className = side === 'left' ? 'bi bi-chevron-left' : 'bi bi-chevron-right';
+                if (side === 'right') {
+                    button.style.right = '400px'; // Changed from 420px to 400px
+                }
+            } else {
+                sidebar.classList.add('hidden');
+                icon.className = side === 'left' ? 'bi bi-chevron-right' : 'bi bi-chevron-left';
+                if (side === 'right') {
+                    button.style.right = '0px';
+                }
+            }
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <span>${message}</span>
+                <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+            `;
+            container.appendChild(toast);
+            
+            // Remove toast after 5 seconds
+            setTimeout(() => {
+                toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        function startRename(uploadId, currentName, event) {
+            event.stopPropagation();
+            const span = event.target;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentName;
+            input.className = 'rename-input';
+            
+            input.onblur = () => finishRename(uploadId, input);
+            input.onkeydown = (e) => {
+                if (e.key === 'Enter') {
+                    input.blur();
+                } else if (e.key === 'Escape') {
+                    input.value = currentName;
+                    input.blur();
+                }
+            };
+            
+            span.parentNode.replaceChild(input, span);
+            input.focus();
+            input.select();
+        }
+        
+        async function finishRename(uploadId, input) {
+            const newName = input.value.trim();
+            if (!newName) return;
+            
+            try {
+                const response = await fetch(`/api/upload/${uploadId}/rename`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name: newName })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    loadUploads();
+                    showToast('Upload renamed successfully');
+                } else {
+                    showToast(result.error || 'Failed to rename upload', 'error');
+                }
+            } catch (error) {
+                showToast(`Error renaming upload: ${error.message}`, 'error');
+            }
+        }
+
+        // File upload handling
+        document.getElementById('hiddenFileInput').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('name', file.name.replace(/\.[^/.]+$/, "")); // Use filename without extension as initial name
+            
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('File uploaded and processed successfully!');
+                    loadUploads();
+                    e.target.value = ''; // Clear the input
+                } else {
+                    showToast(result.error || 'Unknown error occurred', 'error');
+                }
+            } catch (error) {
+                showToast(`Error uploading file: ${error.message}`, 'error');
+            }
+        });
+
+        // Custom parsers functions
+        function loadCustomParsers() {
+            fetch('/api/parsers')
+                .then(response => response.json())
+                .then(data => {
+                    customParsers = {};
+                    
+                    // Recreate function objects from saved strings
+                    for (const parser of data) {
+                        try {
+                            // Create the parser function
+                            customParsers[parser.name] = new Function('x', parser.code);
+                            customParsers[parser.name].source = parser.code;
+                            customParsers[parser.name].id = parser.id;
+                            
+                            // Also attach it to the window object for global access
+                            window[parser.name] = customParsers[parser.name];
+                        } catch (e) {
+                            console.error(`Error recreating parser ${parser.name}:`, e);
+                        }
+                    }
+                    
+                    displayCustomParsers();
+                })
+                .catch(error => {
+                    console.error('Error loading parsers:', error);
+                    // If no parsers are in the database, add default parsers
+                    addDefaultParsers();
+                });
+        }
+        
+        function createOrUpdateParserOnServer(name, code) {
+            const parserId = customParsers[name] && customParsers[name].id;
+            const method = parserId ? 'PUT' : 'POST';
+            const url = parserId ? `/api/parsers/${parserId}` : '/api/parsers';
+            
+            fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: name,
+                    code: code
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.id) {
+                    customParsers[name].id = data.id;
+                }
+            })
+            .catch(error => {
+                console.error('Error saving parser to server:', error);
+                showToast(`Error saving parser: ${error.message}`, 'error');
+            });
+        }
+        
+        function displayCustomParsers() {
+            const parsersDiv = document.getElementById('parsersList');
+            parsersDiv.innerHTML = '';
+            
+            for (const [name, parserFn] of Object.entries(customParsers)) {
+                const parserDiv = document.createElement('div');
+                parserDiv.className = 'parser-item';
+                
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'parser-header';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'parser-name';
+                nameSpan.textContent = name;
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'parser-actions';
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn btn-sm btn-outline-secondary';
+                editBtn.textContent = 'Edit';
+                editBtn.onclick = () => editParser(name);
+                
+                const testBtn = document.createElement('button');
+                testBtn.className = 'btn btn-sm btn-outline-info';
+                testBtn.textContent = 'Test';
+                testBtn.onclick = () => testParser(name);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.onclick = () => deleteParser(name);
+                
+                actionsDiv.appendChild(editBtn);
+                actionsDiv.appendChild(testBtn);
+                actionsDiv.appendChild(deleteBtn);
+                
+                headerDiv.appendChild(nameSpan);
+                headerDiv.appendChild(actionsDiv);
+                
+                const codeTextarea = document.createElement('textarea');
+                codeTextarea.className = 'parser-code';
+                codeTextarea.value = parserFn.source.trim();
+                codeTextarea.readOnly = true;
+                
+                parserDiv.appendChild(headerDiv);
+                parserDiv.appendChild(codeTextarea);
+                parsersDiv.appendChild(parserDiv);
+            }
+        }
+
+        function addNewParser() {
+            // Open the parser editor with a blank/default state
+            openParserEditor('', true);
+        }
+        
+        function editParser(name) {
+            openParserEditor(name, false);
+        }
+        
+        function openParserEditor(name, isNew) {
+            editorIsNew = isNew;
+            currentParserName = name;
+            
+            // Prepare the code to edit
+            const defaultCode = isNew ? 
+                `function tensorShape(x) {
+    // Extract shape from tensor string like "Tensor[8x384x1024|BFLOAT16|INTERLEAVED|L1]"
+    const match = x.match(/Tensor\\[(\\d+)x(\\d+)x(\\d+)/);
+    if (match) {
+        return [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+    }
+    return null;
+}` : customParsers[name].source.trim();
+            
+            // Set the name field
+            document.getElementById('parserName').value = name;
+            
+            // Clear test result
+            document.getElementById('testResult').style.display = 'none';
+            
+            // Show the modal
+            document.getElementById('parserEditorModal').style.display = 'flex';
+            
+            // Initialize or update Monaco Editor
+            require(['vs/editor/editor.main'], function() {
+                initializeMonacoEditor(defaultCode);
+                
+                // If this is a new parser, try to extract the function name
+                if (isNew) {
+                    setTimeout(extractFunctionName, 100);
+                }
+                
+                // Focus the editor
+                setTimeout(() => {
+                    if (monacoEditor) {
+                        monacoEditor.focus();
+                    }
+                }, 100);
+            });
+        }
+        
+        function extractFunctionName() {
+            if (!monacoEditor) return;
+            
+            const code = monacoEditor.getValue().trim();
+            
+            // Check for traditional function syntax: function name(...)
+            const functionMatch = code.match(/function\s+([a-zA-Z0-9_]+)\s*\(/);
+            
+            // Check for arrow function syntax: const/let/var name = (...) => or name = x =>
+            const arrowFunctionMatch = code.match(/(const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(\([^)]*\)|x)\s*=>/);
+            
+            if (functionMatch) {
+                document.getElementById('parserName').value = functionMatch[1];
+            } else if (arrowFunctionMatch) {
+                document.getElementById('parserName').value = arrowFunctionMatch[2];
+            }
+        }
+        
+        function closeParserEditor() {
+            document.getElementById('parserEditorModal').style.display = 'none';
+        }
+        
+        function saveParser() {
+            if (!monacoEditor) return;
+            
+            // Extract name from function if not provided
+            extractFunctionName();
+            
+            let name = document.getElementById('parserName').value.trim();
+            const code = monacoEditor.getValue().trim();
+            
+            if (!code) {
+                alert('Parser code cannot be empty');
+                return;
+            }
+            
+            // If name is still empty after extraction attempt, try one more approach to find the function name
+            if (!name) {
+                // Try to detect the function name directly from the code
+                const functionNameMatch = code.match(/function\s+([a-zA-Z0-9_]+)\s*\(/);
+                if (functionNameMatch) {
+                    name = functionNameMatch[1]; 
+                    document.getElementById('parserName').value = name;
+                } else {
+                    // Generate a random name as a last resort
+                    name = 'parser_' + Math.floor(Math.random() * 10000);
+                    document.getElementById('parserName').value = name;
+                }
+            }
+            
+            // Check if we're renaming to an existing parser name
+            if (name !== currentParserName && customParsers[name]) {
+                if (!confirm(`Parser "${name}" already exists. Do you want to overwrite it?`)) {
+                    return;
+                }
+            }
+            
+            try {
+                // Test the function
+                const testFn = new Function('x', code);
+                
+                // Save if valid
+                if (name !== currentParserName && customParsers[currentParserName]) {
+                    // We're renaming, so delete the old parser
+                    delete customParsers[currentParserName];
+                }
+                
+                customParsers[name] = testFn;
+                customParsers[name].source = code;
+                
+                // Attach to window for global access
+                window[name] = customParsers[name];
+                
+                // Save to server
+                createOrUpdateParserOnServer(name, code);
+                
+                displayCustomParsers();
+                showToast(`Parser "${name}" ${editorIsNew ? 'created' : 'updated'} successfully`);
+                
+                // Close the modal
+                closeParserEditor();
+            } catch (e) {
+                alert(`Error in parser function: ${e.message}`);
+            }
+        }
+
+        function testParserInEditor() {
+            if (!monacoEditor) return;
+            
+            const code = monacoEditor.getValue().trim();
+            const testInput = document.getElementById('testInput').value;
+            const resultDiv = document.getElementById('testResult');
+            
+            if (!code) {
+                resultDiv.className = 'alert alert-danger mt-2';
+                resultDiv.textContent = 'Parser code cannot be empty';
+                resultDiv.style.display = 'block';
+                return;
+            }
+            
+            try {
+                // First try to extract function name
+                let functionName = null;
+                const functionMatch = code.match(/function\s+([a-zA-Z0-9_]+)\s*\(/);
+                const arrowFunctionMatch = code.match(/(const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(\([^)]*\)|x)\s*=>/);
+                
+                if (functionMatch) {
+                    functionName = functionMatch[1];
+                } else if (arrowFunctionMatch) {
+                    functionName = arrowFunctionMatch[2];
+                }
+                
+                let result;
+                if (functionName) {
+                    // If it's a named function, use a more reliable approach to define and call it
+                    try {
+                        // First try to clear any existing function with that name
+                        if (window[functionName]) {
+                            delete window[functionName];
+                        }
+                        
+                        // Use Function constructor with a wrapper to ensure global scope
+                        new Function(`
+                            // Define the function in global scope
+                            ${code}
+                            
+                            // Attach it explicitly to window to ensure it's in global scope
+                            window.${functionName} = ${functionName};
+                        `)();
+                        
+                        // Now call the function
+                        if (typeof window[functionName] === 'function') {
+                            result = window[functionName](testInput);
+                        } else {
+                            throw new Error(`${functionName} is not properly defined as a function`);
+                        }
+                    } catch (e) {
+                        // If the above fails, try the direct approach
+                        eval(code);
+                        result = eval(`${functionName}("${testInput.replace(/"/g, '\\"')}")`);
+                    }
+                } else {
+                    // Fallback to original method for anonymous functions
+                    const testFn = new Function('x', code);
+                    result = testFn(testInput);
+                }
+                
+                resultDiv.className = 'alert alert-success mt-2';
+                resultDiv.innerHTML = `<strong>Result:</strong> <pre>${JSON.stringify(result, null, 2)}</pre>`;
+                resultDiv.style.display = 'block';
+            } catch (e) {
+                resultDiv.className = 'alert alert-danger mt-2';
+                resultDiv.textContent = `Error: ${e.message}`;
+                resultDiv.style.display = 'block';
+            }
+        }
+        
+        function testParser(name) {
+            const parserFn = customParsers[name];
+            if (!parserFn) return;
+            
+            // Open the parser editor in test mode
+            openParserEditor(name, false);
+            
+            // Focus on the test input field
+            setTimeout(() => {
+                document.getElementById('testInput').focus();
+                testParserInEditor();
+            }, 100);
+        }
+        
+        function deleteParser(name) {
+            if (!confirm(`Are you sure you want to delete the parser "${name}"?`)) {
+                return;
+            }
+            
+            const parserId = customParsers[name] && customParsers[name].id;
+            
+            // If we have an ID, delete from server
+            if (parserId) {
+                fetch(`/api/parsers/${parserId}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        delete customParsers[name];
+                        displayCustomParsers();
+                        showToast(`Parser "${name}" deleted`);
+                    } else {
+                        showToast(`Failed to delete parser: ${data.error}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting parser:', error);
+                    showToast(`Error deleting parser: ${error.message}`, 'error');
+                });
+            } else {
+                // No ID, just delete locally
+                delete customParsers[name];
+                displayCustomParsers();
+                showToast(`Parser "${name}" deleted`);
+            }
+        }
+        
+        function addDefaultParsers() {
+            const defaultParsers = [
+                {
+                    name: 'tensor_shape',
+                    code: `
+                        // Extract shape from tensor string like "Tensor[8x384x1024|BFLOAT16|INTERLEAVED|L1]"
+                        const match = x.match(/Tensor\\[(\\d+)x(\\d+)x(\\d+)/);
+                        if (match) {
+                            return [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+                        }
+                        return null;
+                    `
+                },
+                {
+                    name: 'tensor_dtype',
+                    code: `
+                        // Extract dtype from tensor string
+                        const match = x.match(/\\|(\\w+)\\|/);
+                        return match ? match[1] : null;
+                    `
+                },
+                {
+                    name: 'tensor_layout',
+                    code: `
+                        // Extract layout from tensor string
+                        const parts = x.split('|');
+                        return parts.length > 2 ? parts[2] : null;
+                    `
+                },
+                {
+                    name: 'tensor_location',
+                    code: `
+                        // Extract location from tensor string
+                        const parts = x.split('|');
+                        return parts.length > 3 ? parts[3].replace(']', '') : null;
+                    `
+                }
+            ];
+            
+            customParsers = {};
+            
+            // Create default parsers and save them to the server
+            for (const parser of defaultParsers) {
+                customParsers[parser.name] = new Function('x', parser.code);
+                customParsers[parser.name].source = parser.code;
+                
+                // Save to server
+                createOrUpdateParserOnServer(parser.name, parser.code);
+            }
+            
+            displayCustomParsers();
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load traces and parsers
+            loadUploads();
+            loadCustomParsers();
+            
+            // Add a debug parser to help diagnose issues
+            window.debug_parser = function(x) {
+                console.log("[DEBUG PARSER] Called with:", x);
+                if (typeof x !== 'string') {
+                    console.log("[DEBUG PARSER] Input is not a string:", typeof x);
+                    return null;
+                }
+                
+                // Try to simulate tensorShape parsing for diagnostic purposes
+                try {
+                    const match = x.match(/Tensor\[([^|]+)/);
+                    console.log("[DEBUG PARSER] Match result:", match);
+                    
+                    if (!match) {
+                        console.log("[DEBUG PARSER] No match found");
+                        return null;
+                    }
+                    
+                    const dimensions = match[1].split('x').map(dim => parseInt(dim, 10));
+                    console.log("[DEBUG PARSER] Dimensions:", dimensions);
+                    return dimensions;
+                } catch (e) {
+                    console.log("[DEBUG PARSER] Error:", e);
+                    return null;
+                }
+            };
+            
+            // Also expose debug version of your actual tensor function for comparison
+            window.debug_tensorShape = function(x) {
+                console.log("[DEBUG TENSOR] Called with:", x);
+                // Same implementation as tensorShape but with logging
+                try {
+                    // Extract the content between the square brackets
+                    const match = x.match(/Tensor\[(.*?)\]/);
+                    console.log("[DEBUG TENSOR] Match result:", match);
+                    
+                    if (!match) {
+                        console.log("[DEBUG TENSOR] No match");
+                        return null;
+                    }
+                    
+                    // Split the content to get the shape part (before the first '|')
+                    const parts = match[1].split('|');
+                    console.log("[DEBUG TENSOR] Parts:", parts);
+                    const shapeStr = parts[0];
+                    
+                    // Split the shape string by 'x' and convert to integers
+                    const dimensions = shapeStr.split('x').map(dim => parseInt(dim, 10));
+                    console.log("[DEBUG TENSOR] Dimensions:", dimensions);
+                    
+                    return dimensions;
+                } catch (e) {
+                    console.log("[DEBUG TENSOR] Error:", e);
+                    return null;
+                }
+            };
+        });
+    </script>
+</body>
+</html> 
