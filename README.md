@@ -21,6 +21,14 @@ Install directly from the source:
 pip install .
 ```
 
+### Installation from GitHub Release
+
+You can also install the latest release directly from GitHub:
+
+```bash
+pip install https://github.com/ayerofieiev-tt/ttnn-trace-viewer/releases/download/latest/ttnn_trace_viewer-0.1.0-py3-none-any.whl
+```
+
 ### Development Installation
 
 For development work with editable mode:

@@ -7,13 +7,13 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
-    name="ttnn_capture",
+    name="ttnn_trace_viewer",
     version="0.1.0",
     author="TTNN Capture Team",
     description="A tool for capturing and analyzing trace data",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/ttnn_capture",
+    url="https://github.com/ayerofieiev-tt/ttnn-trace-viewer",
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -32,6 +32,6 @@ setup(
     },
     include_package_data=True,
     package_data={
-        "ttnn_capture": ["templates/*"],
+        "ttnn_trace_viewer": ["templates/*", "static/*"],
     },
 ) 
