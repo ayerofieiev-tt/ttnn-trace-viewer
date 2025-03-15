@@ -277,7 +277,7 @@ class TraceDB:
             
             # First get all trace IDs for this filename
             cursor.execute("""
-                SELECT t.id, t.upload_id, u.created_at
+                SELECT t.id, t.upload_id, u.name as upload_name, u.created_at
                 FROM traces t
                 JOIN uploads u ON t.upload_id = u.id
                 WHERE t.filename = ? AND t.error IS NULL
@@ -288,53 +288,37 @@ class TraceDB:
             if not traces:
                 return []
             
-            # Build a query to get all values with upload info
-            trace_ids = [str(t[0]) for t in traces]
-            cursor.execute(f"""
-                WITH grouped_values AS (
-                    SELECT 
-                        tv.row_idx,
-                        tv.column_name,
-                        tv.value,
-                        t.upload_id,
-                        u.name as upload_name,
-                        u.created_at as upload_time,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY tv.column_name, tv.value
-                            ORDER BY u.created_at DESC
-                        ) as rn
-                    FROM trace_values tv
-                    JOIN traces t ON tv.trace_id = t.id
-                    JOIN uploads u ON t.upload_id = u.id
-                    WHERE tv.trace_id IN ({','.join(trace_ids)})
-                )
-                SELECT 
-                    row_idx,
-                    column_name,
-                    value,
-                    upload_id,
-                    upload_name,
-                    upload_time
-                FROM grouped_values
-                WHERE rn = 1
-                ORDER BY row_idx, column_name
-            """)
+            # Create a list to store all events from all traces
+            all_events = []
             
-            values = cursor.fetchall()
+            # Process each trace to build complete events
+            for trace_id, upload_id, upload_name, upload_time in traces:
+                # Get all values for this trace
+                cursor.execute("""
+                    SELECT row_idx, column_name, value
+                    FROM trace_values
+                    WHERE trace_id = ?
+                    ORDER BY row_idx, column_name
+                """, (trace_id,))
+                
+                values = cursor.fetchall()
+                
+                # Group values by row to form complete events
+                rows = {}
+                for row_idx, column_name, value in values:
+                    if row_idx not in rows:
+                        rows[row_idx] = {
+                            'id': row_idx,
+                            '_upload_id': upload_id,
+                            '_upload_name': upload_name,
+                            '_upload_time': upload_time
+                        }
+                    rows[row_idx][column_name] = value
+                
+                # Add these complete events to our list
+                all_events.extend(list(rows.values()))
             
-            # Organize values by row
-            rows = {}
-            for row_idx, column_name, value, upload_id, upload_name, upload_time in values:
-                if row_idx not in rows:
-                    rows[row_idx] = {
-                        'id': row_idx,
-                        '_upload_id': upload_id,
-                        '_upload_name': upload_name,
-                        '_upload_time': upload_time
-                    }
-                rows[row_idx][column_name] = value
-            
-            return list(rows.values())
+            return all_events
 
     # Parser-related methods
     
