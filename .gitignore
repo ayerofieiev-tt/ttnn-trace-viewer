@@ -10,6 +10,7 @@ venv/
 ENV/
 uploads/
 trace/
+sample_data/
 *.pickle
 *.json
 *.log 
