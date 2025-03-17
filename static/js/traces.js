@@ -1,5 +1,19 @@
 // Trace Handling for TT-NN Trace Viewer
 
+// Global variables for column widths
+let columnWidths = {};
+
+// Make sure columnFilters is initialized
+if (typeof columnFilters === 'undefined') {
+    var columnFilters = {};
+}
+
+// Debug helper to print all active filters
+function printFilters() {
+    console.log("Active filters:", JSON.stringify(columnFilters, null, 2));
+}
+window.printFilters = printFilters;
+
 // Select a trace in by-upload view
 function selectTrace(traceId, uploadId) {
     // Update selected state in UI
@@ -183,7 +197,10 @@ function displayTraceData(traceData) {
     
     // Create table for trace data
     let html = `
-        <h2>${traceData.filename || 'Trace Data'}</h2>
+        <div class="trace-header-container">
+            <h2>Trace Data</h2>
+            <div class="trace-name-badge">${traceData.name || traceData.filename || ''}</div>
+        </div>
         <div class="trace-stats">
             ${traceData.length || 0} events
         </div>
@@ -222,7 +239,10 @@ function displayConsolidatedTraceData(traceData) {
     
     // Create container for consolidated trace data
     let html = `
-        <h2>${traceData.filename || traceData.name || 'Consolidated Trace'}</h2>
+        <div class="trace-header-container">
+            <h2>Consolidated Trace</h2>
+            <div class="trace-name-badge">${traceData.name || ''}</div>
+        </div>
         <div class="trace-stats">
             ${uploadCount} uploads, ${eventCount} total events
         </div>
@@ -359,6 +379,8 @@ function filterEvents() {
         return;
     }
     
+    console.log("Applying filters:", columnFilters);
+    
     // Apply filters
     document.querySelectorAll('tr.event-row').forEach(row => {
         let visible = true;
@@ -368,6 +390,7 @@ function filterEvents() {
             if (!filterText) continue; // Skip empty filters
             
             const cellValue = row.querySelector(`td[data-column="${column}"]`)?.textContent || '';
+            console.log(`Checking cell value "${cellValue}" against filter "${filterText}"`);
             
             // Check if this is a parser function call (contains parentheses)
             if (filterText.includes('(') && filterText.includes(')')) {
@@ -390,6 +413,7 @@ function filterEvents() {
                     
                     // Apply the function to the cell value
                     const result = filterFunction(cellValue);
+                    console.log(`Function filter result: ${result}`);
                     if (result !== true) {
                         visible = false;
                         break;
@@ -401,10 +425,38 @@ function filterEvents() {
                     break;
                 }
             } else {
-                // Simple text filter (case insensitive)
-                if (!cellValue.toLowerCase().includes(filterText.toLowerCase())) {
-                    visible = false;
-                    break;
+                // For expressions without parentheses, evaluate them directly
+                try {
+                    // Create a function that will evaluate the expression with the event value
+                    const filterFunction = new Function('value', `
+                        // Make all parser functions available in this scope
+                        ${Object.keys(window)
+                            .filter(key => typeof window[key] === 'function' && !key.startsWith('_'))
+                            .map(key => `const ${key} = window['${key}'];`)
+                            .join('\n')}
+                        
+                        try {
+                            return ${filterText};
+                        } catch (e) {
+                            // Fall back to substring search
+                            return value.toLowerCase().includes("${filterText.toLowerCase().replace(/"/g, '\\"')}");
+                        }
+                    `);
+                    
+                    // Apply the function to the cell value
+                    const result = filterFunction(cellValue);
+                    console.log(`Expression filter result: ${result}`);
+                    if (result !== true) {
+                        visible = false;
+                        break;
+                    }
+                } catch (error) {
+                    console.error(`Error evaluating expression "${filterText}":`, error);
+                    // Fall back to simple text filter
+                    if (!cellValue.toLowerCase().includes(filterText.toLowerCase())) {
+                        visible = false;
+                        break;
+                    }
                 }
             }
         }
@@ -543,10 +595,15 @@ function updateTraceTable(events, fields) {
     
     // Create table if it doesn't exist
     if (!document.getElementById('eventsTable')) {
+        // Create a scrollable wrapper
+        const scrollWrapper = document.createElement('div');
+        scrollWrapper.className = 'table-scroll-wrapper';
+        tableContainer.appendChild(scrollWrapper);
+        
         const table = document.createElement('table');
         table.id = 'eventsTable';
-        table.className = 'table table-striped table-sm';
-        tableContainer.appendChild(table);
+        table.className = 'table table-striped table-sm resizable-table';
+        scrollWrapper.appendChild(table);
         
         // Create table header
         const thead = document.createElement('thead');
@@ -562,7 +619,32 @@ function updateTraceTable(events, fields) {
             th.textContent = field;
             th.className = 'sortable';
             th.dataset.column = field;
-            th.addEventListener('click', () => sortEvents(field));
+            
+            // Apply stored width if available
+            if (columnWidths[field]) {
+                th.style.width = columnWidths[field] + 'px';
+                th.style.minWidth = columnWidths[field] + 'px';
+            } else {
+                // Default minimum width
+                th.style.minWidth = '100px';
+            }
+            
+            // Add click handler for sorting
+            th.addEventListener('click', (e) => {
+                // Only sort if we didn't click on the resizer
+                if (!e.target.classList.contains('resizer')) {
+                    sortEvents(field);
+                }
+            });
+            
+            // Add resizer element
+            const resizer = document.createElement('div');
+            resizer.className = 'resizer';
+            th.appendChild(resizer);
+            
+            // Add resize functionality
+            setupResizer(resizer, th, field);
+            
             headerRow.appendChild(th);
         });
         
@@ -579,6 +661,185 @@ function updateTraceTable(events, fields) {
     // Render the table body
     renderTableBody();
 }
+
+// Setup column resizer
+function setupResizer(resizer, th, field) {
+    let startX, startWidth;
+    
+    // Add double-click handler for auto-sizing
+    resizer.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        
+        // Auto-size the column based on content
+        const maxWidth = calculateMaxColumnWidth(field);
+        // Add some padding to ensure text fits
+        const newWidth = maxWidth + 20;
+        
+        // Set the new width
+        th.style.width = newWidth + 'px';
+        th.style.minWidth = newWidth + 'px';
+        columnWidths[field] = newWidth;
+    });
+    
+    resizer.addEventListener('mousedown', function(e) {
+        // Prevent sort event from triggering
+        e.stopPropagation();
+        
+        startX = e.pageX;
+        startWidth = th.offsetWidth;
+        
+        // Add event listeners for resize operation
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        
+        // Add a resize class to the table for cursor styling
+        const table = th.closest('table');
+        if (table) {
+            table.classList.add('resizing');
+        }
+    });
+    
+    function handleMouseMove(e) {
+        // Calculate new width
+        const newWidth = startWidth + (e.pageX - startX);
+        
+        // Apply minimum width
+        if (newWidth >= 50) {
+            th.style.width = newWidth + 'px';
+            th.style.minWidth = newWidth + 'px';
+            columnWidths[field] = newWidth;
+        }
+    }
+    
+    function handleMouseUp() {
+        // Remove event listeners
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        
+        // Remove the resize class
+        const table = th.closest('table');
+        if (table) {
+            table.classList.remove('resizing');
+        }
+    }
+}
+
+// Calculate max width needed for a column
+function calculateMaxColumnWidth(field) {
+    let maxWidth = 100;  // Default minimum
+    
+    // Calculate header width
+    const headerElement = document.querySelector(`th[data-column="${field}"]`);
+    if (headerElement) {
+        // Create temporary span to measure text width
+        const tempSpan = document.createElement('span');
+        tempSpan.style.visibility = 'hidden';
+        tempSpan.style.position = 'absolute';
+        tempSpan.style.whiteSpace = 'nowrap';
+        tempSpan.textContent = headerElement.textContent;
+        document.body.appendChild(tempSpan);
+        
+        const headerWidth = tempSpan.offsetWidth;
+        document.body.removeChild(tempSpan);
+        
+        maxWidth = Math.max(maxWidth, headerWidth);
+    }
+    
+    // Calculate max content width
+    const cells = document.querySelectorAll(`td[data-column="${field}"]`);
+    cells.forEach(cell => {
+        // For content cells, create a temporary measuring element
+        const tempSpan = document.createElement('span');
+        tempSpan.style.visibility = 'hidden';
+        tempSpan.style.position = 'absolute';
+        tempSpan.style.whiteSpace = 'nowrap';
+        tempSpan.textContent = cell.textContent;
+        document.body.appendChild(tempSpan);
+        
+        const contentWidth = tempSpan.offsetWidth;
+        document.body.removeChild(tempSpan);
+        
+        maxWidth = Math.max(maxWidth, contentWidth);
+    });
+    
+    return maxWidth;
+}
+
+// Add the following CSS to your document head or stylesheet
+document.addEventListener('DOMContentLoaded', function() {
+    const style = document.createElement('style');
+    style.textContent = `
+        .table-scroll-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            border-radius: 4px;
+            position: relative;
+        }
+        
+        .resizable-table {
+            width: max-content;
+            min-width: 100%;
+        }
+        
+        .resizable-table th {
+            position: relative;
+            white-space: nowrap;
+            overflow: visible;
+            background-color: #f8f9fa;
+            z-index: 1;
+        }
+        
+        .resizer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 8px;
+            height: 100%;
+            cursor: col-resize;
+            z-index: 10;
+        }
+        
+        .resizer:hover {
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        .resizing {
+            cursor: col-resize;
+            user-select: none;
+        }
+        
+        .resizable-table td {
+            overflow: visible;
+            white-space: normal;
+            word-wrap: break-word;
+            min-width: 100px;
+            padding: 4px 8px;
+        }
+        
+        /* Style for selected row */
+        .event-row.selected {
+            background-color: rgba(0, 123, 255, 0.15) !important;
+        }
+        
+        /* Trace header styling */
+        .trace-header-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .trace-name-badge {
+            margin-left: 1rem;
+            padding: 0.3rem 0.7rem;
+            background-color: #6c757d;
+            color: white;
+            border-radius: 0.25rem;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+    `;
+    document.head.appendChild(style);
+});
 
 // Populate the list of columns for filtering
 function populateColumnsList(traceData) {
@@ -605,26 +866,34 @@ function populateColumnsList(traceData) {
         const filterInput = document.getElementById(`column-filter-${column}`);
         filterInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
-                columnFilters[column] = this.value;
-                if (currentTrace) {
-                    if (viewMode === 'consolidated') {
-                        displayConsolidatedTraceData(currentTrace);
-                    } else {
-                        displayTraceData(currentTrace);
-                    }
+                const filterValue = this.value.trim();
+                console.log(`Setting filter for ${column}: "${filterValue}"`);
+                
+                // Store the filter value
+                if (filterValue === '') {
+                    // Remove empty filters
+                    delete columnFilters[column];
+                } else {
+                    columnFilters[column] = filterValue;
                 }
+                
+                // Apply filters to current view without redrawing everything
+                filterEvents();
+                e.preventDefault();
             }
         });
         
         // Also update on blur
         filterInput.addEventListener('blur', function() {
-            columnFilters[column] = this.value;
-            if (currentTrace) {
-                if (viewMode === 'consolidated') {
-                    displayConsolidatedTraceData(currentTrace);
-                } else {
-                    displayTraceData(currentTrace);
-                }
+            const filterValue = this.value.trim();
+            
+            // Only update if value actually changed
+            if (filterValue === '' && columnFilters[column]) {
+                delete columnFilters[column];
+                filterEvents();
+            } else if (filterValue !== '' && columnFilters[column] !== filterValue) {
+                columnFilters[column] = filterValue;
+                filterEvents();
             }
         });
     });
@@ -706,4 +975,38 @@ function updateRowCount() {
             traceStatsElement.textContent = `${totalRows} events`;
         }
     }
-} 
+}
+
+// Debug function to test a filter expression
+function testFilter(column, filterExpression, cellValue) {
+    console.log(`Testing filter: ${filterExpression} on value: ${cellValue}`);
+    
+    try {
+        // Create a function that will evaluate the expression with the event value
+        const filterFunction = new Function('value', `
+            // Make all parser functions available in this scope
+            ${Object.keys(window)
+                .filter(key => typeof window[key] === 'function' && !key.startsWith('_'))
+                .map(key => `const ${key} = window['${key}'];`)
+                .join('\n')}
+            
+            try {
+                return ${filterExpression};
+            } catch (e) {
+                console.error("Filter evaluation error:", e);
+                return false;
+            }
+        `);
+        
+        // Apply the function to the cell value
+        const result = filterFunction(cellValue);
+        console.log(`Filter result: ${result}`);
+        return result;
+    } catch (error) {
+        console.error(`Error creating filter function "${filterExpression}":`, error);
+        return false;
+    }
+}
+
+// Make debug function available globally
+window.testFilter = testFilter; 

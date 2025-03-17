@@ -29,7 +29,7 @@ def transform_tensor(tensor_data: Dict[str, Any]) -> str:
         
         # Extract shape dimensions
         shape = tensor_spec.get('logical_shape', [])
-        shape_dims = 'x'.join(str(dim) for dim in shape)
+        shape_dims = ','.join(str(dim) for dim in shape)
         
         # Extract dtype
         dtype = "unknown"
@@ -57,7 +57,7 @@ def transform_tensor(tensor_data: Dict[str, Any]) -> str:
                 buffer_type = re.sub(r'^BufferType::', '', buffer_type)
         
         # Format as "Tensor[dims|dtype|layout|buffer]"
-        return f"Tensor[{shape_dims}|{dtype}|{memory_layout}|{buffer_type}]"
+        return f"Tensor[{shape_dims} | {dtype} | {memory_layout} | {buffer_type}]"
     except Exception as e:
         return f"Error parsing tensor: {str(e)}"
 
@@ -72,6 +72,15 @@ def transform_memory_config(memory_config: Dict[str, Any]) -> str:
         return f"MemoryConfig({memory_layout}|{buffer_type})"
     except Exception as e:
         return f"Error parsing memory config: {str(e)}"
+
+@register_transformer("Shape")
+def transform_shape(shape_data: List[int]) -> str:
+    """Transform a Shape object to a simplified string representation."""
+    try:
+        shape_dims = ', '.join(str(dim) for dim in shape_data)
+        return f"Shape[{shape_dims}]"
+    except Exception as e:
+        return f"Error parsing shape: {str(e)}"
 
 def process_arg_value(arg_value: Any) -> str:
     """
