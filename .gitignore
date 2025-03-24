@@ -13,4 +13,6 @@ trace/
 sample_data/
 *.pickle
 *.json
-*.log 
+*.log
+.DS_Store
+*.egg-info/ 

@@ -1,5 +1,0 @@
-[console_scripts]
-ttnn-store = store_traces:main
-ttnn-to-csv = ttnn_capture_to_csv:main
-ttnn-to-sheets = upload_to_sheets:main
-ttnn-trace-viewer = trace_viewer:main
