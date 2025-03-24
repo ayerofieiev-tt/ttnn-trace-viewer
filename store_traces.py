@@ -2,8 +2,10 @@ import os
 import csv
 import argparse
 import tempfile
+import json
 from trace_db import TraceDB
 from ttnn_capture_to_csv import json_to_csv
+from json_processor import is_raw_json, process_json
 
 def read_csv_file(file_path):
     """Read CSV file with semicolon delimiter."""
@@ -16,19 +18,45 @@ def read_csv_file(file_path):
 def process_json_file(json_file, upload_name):
     """
     Process a JSON file by converting it to CSVs and storing them in the database.
+    Automatically detects whether the JSON is in raw format (with connections/arguments)
+    or already processed format (with "content" key).
+    
     Returns True if successful, False otherwise.
     """
     try:
         # Create a temporary directory for CSV files
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Convert JSON to CSV files (grouped by operation)
-            json_to_csv(json_file, temp_dir, group_by_operation=True, remove_duplicates=True)
+            # Check if it's raw or processed JSON
+            with open(json_file, 'r') as f:
+                try:
+                    data = json.load(f)
+                    raw_format = is_raw_json(data)
+                except json.JSONDecodeError as e:
+                    print(f"Invalid JSON format: {str(e)}")
+                    return False
             
-            # Store the generated CSV files
-            store_csv_files(temp_dir, upload_name)
+            # Set up the processed subdirectory path
+            processed_dir = os.path.join(temp_dir, "processed")
+            os.makedirs(processed_dir, exist_ok=True)
+            
+            # Process the JSON using the auto-detection in process_json
+            print(f"Processing JSON file{' (detected raw format)' if raw_format else ' (detected processed format)'}")
+            process_json(
+                json_file,
+                processed_dir,
+                is_csv=True,
+                group_by=True,
+                no_duplicates=True
+            )
+            
+            # Store the generated CSV files from the processed subdirectory
+            print(f"Looking for CSV files in: {processed_dir}")
+            store_csv_files(processed_dir, upload_name)
             return True
     except Exception as e:
         print(f"Error processing JSON file: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def store_csv_files(directory_path, upload_name):
@@ -51,9 +79,11 @@ def store_csv_files(directory_path, upload_name):
     csv_files = [f for f in os.listdir(directory_path) if f.endswith('.csv')]
     
     if not csv_files:
-        print("No CSV files found in the specified directory.")
+        print(f"No CSV files found in the directory: {directory_path}")
         return
 
+    print(f"Found {len(csv_files)} CSV files to process")
+    
     # Process each CSV file
     for csv_file in csv_files:
         try:

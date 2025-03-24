@@ -153,7 +153,7 @@ def upload_csv_files(directory_path, spreadsheet_title):
     
     if not csv_files:
         print("No CSV files found in the specified directory.")
-        return
+        return None
 
     # Prepare batch requests for creating sheets
     sheet_requests = []
@@ -213,11 +213,15 @@ def upload_csv_files(directory_path, spreadsheet_title):
 
         print(f"\nAll files have been uploaded. You can access your spreadsheet at:")
         print(f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}")
+        
+        # Return the spreadsheet ID
+        return spreadsheet_id
 
     except Exception as e:
         print(f"Error during batch operations: {str(e)}")
         if isinstance(e, HttpError):
             print(f"Response content: {e.content}")
+        return None
 
 def main():
     parser = argparse.ArgumentParser(description='Upload CSV files to Google Sheets')

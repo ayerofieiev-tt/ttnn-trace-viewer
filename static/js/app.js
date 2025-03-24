@@ -1,12 +1,15 @@
 // Main Application Logic for TT-NN Trace Viewer
 
 // Global variables
-let currentTrace = null;
-let columnFilters = {};
-let uploads = [];
-let filteredUploads = [];
-let viewMode = 'by_upload';
-let commonFilterFn = null;
+window.currentTrace = null;
+// Use window.columnFilters instead of a local variable to avoid conflicts
+if (typeof window.columnFilters === 'undefined') {
+    window.columnFilters = {};
+}
+window.uploads = [];
+window.filteredUploads = [];
+window.viewMode = 'by_upload';
+window.commonFilterFn = null;
 let customParsers = {};
 
 // Initialize the application
@@ -90,7 +93,7 @@ function setupDebugHelpers() {
 
 // View mode handling
 function setViewMode(mode) {
-    viewMode = mode;
+    window.viewMode = mode;
     document.getElementById('byUploadBtn').classList.toggle('active', mode === 'by_upload');
     document.getElementById('consolidatedBtn').classList.toggle('active', mode === 'consolidated');
     document.getElementById('uploadFilter').placeholder = mode === 'by_upload' ? 'Filter uploads...' : 'Filter traces...';
@@ -139,24 +142,69 @@ function initializeSidebarToggles() {
 }
 
 // Show a toast notification
-function showToast(message, type = 'success') {
+function showToast(message, type = 'success', duration = 5000, allowHTML = false) {
     const toastContainer = document.getElementById('toastContainer');
+    
+    // If toast container doesn't exist, create it
+    if (!toastContainer) {
+        const newContainer = document.createElement('div');
+        newContainer.id = 'toastContainer';
+        newContainer.className = 'toast-container';
+        document.body.appendChild(newContainer);
+    }
+    
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.innerHTML = `
-        <div>${message}</div>
-        <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
-    `;
-    toastContainer.appendChild(toast);
     
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-        toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+    // Generate a unique ID for this toast
+    const toastId = 'toast-' + Math.random().toString(36).substr(2, 9);
+    toast.id = toastId;
+    
+    // Handle both message-first and type-first function calls for backward compatibility
+    if (typeof message === 'string' && (type === 'success' || type === 'error' || type === 'info' || type === 'warning')) {
+        // New style: first param is the message, second param is the type
+    } else if (typeof message === 'string' && message === 'success' || message === 'error' || message === 'info' || message === 'warning') {
+        // Old style: first param was the type, second param was the message
+        const temp = message;
+        message = type;
+        type = temp;
+    }
+    
+    // Set icon based on type
+    const iconClass = type === 'error' ? 'bi-exclamation-triangle' : 
+                      type === 'warning' ? 'bi-exclamation-circle' :
+                      type === 'info' ? 'bi-info-circle' : 'bi-check-circle';
+                      
+    toast.innerHTML = `
+        <div class="toast-content">
+            <i class="bi ${iconClass}"></i>
+            <span>${allowHTML ? message : document.createTextNode(message).textContent}</span>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    
+    // Ensure toast container exists before appending
+    const container = document.getElementById('toastContainer') || document.body;
+    container.appendChild(toast);
+    
+    // Log to console as a fallback
+    const logMethod = type === 'error' ? console.error : 
+                     type === 'warning' ? console.warn : console.log;
+    logMethod('[Toast]', message.replace(/<[^>]*>/g, ''));  // Strip HTML tags for console
+    
+    // Auto-remove after specified duration
+    if (duration > 0) {
         setTimeout(() => {
-            toast.remove();
-        }, 300);
-    }, 5000);
+            if (toast.parentElement) {
+                toast.remove();
+            }
+        }, duration);
+    }
+    
+    // Return the toast ID so it can be referenced later
+    return toastId;
 }
+window.showToast = showToast;
 
 // Handle file upload
 function handleFileUpload(event) {
@@ -174,14 +222,14 @@ function handleFileUpload(event) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showToast(`File ${file.name} uploaded successfully!`);
+            showToast('success', `File ${file.name} uploaded successfully!`);
             loadUploads();
         } else {
-            showToast(`Upload failed: ${data.error}`, 'error');
+            showToast('error', `Upload failed: ${data.error}`);
         }
     })
     .catch(error => {
-        showToast(`Upload error: ${error}`, 'error');
+        showToast('error', `Upload error: ${error}`);
     });
     
     // Reset file input

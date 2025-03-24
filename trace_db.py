@@ -240,6 +240,17 @@ class TraceDB:
             """)
             return cursor.fetchall()
             
+    def get_trace_by_id(self, trace_id):
+        """Get a specific trace by ID."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, filename, sheet_name, error, row_count, upload_id
+                FROM traces
+                WHERE id = ?
+            """, (trace_id,))
+            return cursor.fetchone()
+            
     def get_traces_by_filename(self, filename):
         """Get all traces with a specific filename."""
         with sqlite3.connect(self.db_path) as conn:

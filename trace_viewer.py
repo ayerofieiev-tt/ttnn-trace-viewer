@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request, flash
+from flask import Flask, render_template, jsonify, request, flash, Response
 from trace_db import TraceDB
 import json
 import os
@@ -88,11 +88,157 @@ def get_trace_values(trace_id):
     values = db.get_values(trace_id)
     return jsonify(values)
 
+@app.route('/api/trace/<int:trace_id>/export-filtered-csv', methods=['POST'])
+def export_filtered_trace_to_csv(trace_id):
+    """Export filtered trace data as CSV file for download."""
+    # Get the filter criteria from the request
+    filter_data = request.json if request.is_json else {}
+    
+    # Check if client sent pre-filtered data
+    export_data = filter_data.get('exportData')
+    
+    # If client provides pre-filtered data, use it directly
+    if export_data:
+        filtered_values = export_data
+    else:
+        # Otherwise, get all values and filter server-side
+        values = db.get_values(trace_id)
+        
+        if not values:
+            return jsonify({"error": "No data found for this trace"}), 404
+        
+        # Filter values based on filter criteria
+        filtered_values = []
+        
+        # Apply column filters if provided
+        column_filters = filter_data.get('columnFilters', {})
+        for row in values:
+            include_row = True
+            for column, filter_value in column_filters.items():
+                cell_value = row.get(column, '')
+                if filter_value and cell_value and filter_value.lower() not in str(cell_value).lower():
+                    include_row = False
+                    break
+            if include_row:
+                filtered_values.append(row)
+    
+    # Get trace info for filename
+    trace_info = db.get_trace_by_id(trace_id)
+    if not trace_info:
+        filename = f"trace_{trace_id}_filtered.csv"
+    else:
+        filename = f"{trace_info[1].replace(' ', '_')}_{trace_id}_filtered.csv"
+    
+    # If filtered values is empty, return an error
+    if not filtered_values:
+        return jsonify({"error": "No data matches the filter criteria"}), 404
+    
+    # Get all column names from the first row
+    if filtered_values and len(filtered_values) > 0:
+        columns = list(filtered_values[0].keys())
+        # Remove metadata columns if present
+        for meta_col in ['id', '_upload_id', '_upload_name', '_upload_time']:
+            if meta_col in columns:
+                columns.remove(meta_col)
+    else:
+        columns = []
+    
+    # Generate CSV data
+    csv_data = []
+    csv_data.append(";".join(columns))
+    
+    for row in filtered_values:
+        csv_row = []
+        for col in columns:
+            # Don't quote values - directly add them to the CSV
+            value = str(row.get(col, ""))
+            csv_row.append(value)
+        csv_data.append(";".join(csv_row))
+    
+    # Create response with CSV data
+    response = Response("\n".join(csv_data), mimetype="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    response.headers["Content-Type"] = "text/csv; charset=utf-8; header=present; delimiter=semicolon"
+    return response
+
 @app.route('/api/consolidated-trace/<path:filename>/values')
 def get_consolidated_trace_values(filename):
     try:
         values = db.get_deduplicated_values_by_filename(filename)
         return jsonify(values)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/consolidated-trace/<path:filename>/export-filtered-csv', methods=['POST'])
+def export_filtered_consolidated_trace_to_csv(filename):
+    """Export filtered consolidated trace data as CSV file for download."""
+    try:
+        # Get the filter criteria from the request
+        filter_data = request.json if request.is_json else {}
+        
+        # Check if client sent pre-filtered data
+        export_data = filter_data.get('exportData')
+        
+        # If client provides pre-filtered data, use it directly
+        if export_data:
+            filtered_values = export_data
+        else:
+            # Otherwise, get all values and filter server-side
+            values = db.get_deduplicated_values_by_filename(filename)
+            
+            if not values:
+                return jsonify({"error": "No data found for this trace"}), 404
+            
+            # Filter values based on filter criteria
+            filtered_values = []
+            
+            # Apply column filters if provided
+            column_filters = filter_data.get('columnFilters', {})
+            for row in values:
+                include_row = True
+                for column, filter_value in column_filters.items():
+                    cell_value = row.get(column, '')
+                    if filter_value and cell_value and filter_value.lower() not in str(cell_value).lower():
+                        include_row = False
+                        break
+                if include_row:
+                    filtered_values.append(row)
+        
+        # Sanitize filename
+        safe_filename = filename.replace(' ', '_').replace('/', '_').replace('\\', '_')
+        output_filename = f"{safe_filename}_consolidated_filtered.csv"
+        
+        # If filtered values is empty, return an error
+        if not filtered_values:
+            return jsonify({"error": "No data matches the filter criteria"}), 404
+        
+        # Get all column names from the first row
+        if filtered_values and len(filtered_values) > 0:
+            columns = list(filtered_values[0].keys())
+            # Remove metadata columns if present
+            for meta_col in ['id', '_upload_id', '_upload_name', '_upload_time']:
+                if meta_col in columns:
+                    columns.remove(meta_col)
+        else:
+            columns = []
+        
+        # Generate CSV data
+        csv_data = []
+        csv_data.append(";".join(columns))
+        
+        for row in filtered_values:
+            csv_row = []
+            for col in columns:
+                # Don't quote values - directly add them to the CSV
+                value = str(row.get(col, ""))
+                csv_row.append(value)
+            csv_data.append(";".join(csv_row))
+        
+        # Create response with CSV data
+        response = Response("\n".join(csv_data), mimetype="text/csv")
+        response.headers["Content-Disposition"] = f"attachment; filename={output_filename}"
+        response.headers["Content-Type"] = "text/csv; charset=utf-8; header=present; delimiter=semicolon"
+        return response
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -103,6 +249,156 @@ def delete_upload(upload_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/upload/<int:upload_id>/export-csv', methods=['GET'])
+def export_upload_to_csv(upload_id):
+    """Export all traces from an upload as a zip of CSV files."""
+    try:
+        import zipfile
+        import io
+        
+        # Get upload info
+        upload = db.get_upload(upload_id)
+        if not upload:
+            return jsonify({"error": "Upload not found"}), 404
+            
+        # Get all traces for this upload
+        traces = db.get_traces_for_upload(upload_id)
+        if not traces or len(traces) == 0:
+            return jsonify({"error": "No traces found for this upload"}), 404
+            
+        # Create in-memory zip file
+        memory_file = io.BytesIO()
+        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for trace in traces:
+                trace_id, filename, sheet_name, error, row_count = trace
+                
+                # Skip traces with errors
+                if error:
+                    continue
+                
+                # Get columns and values
+                columns = db.get_columns(trace_id)
+                values = db.get_values(trace_id)
+                
+                if not values or len(values) == 0:
+                    continue
+                
+                # Generate CSV data
+                csv_data = []
+                csv_data.append(";".join(columns))
+                
+                for row in values:
+                    csv_row = []
+                    for col in columns:
+                        # Don't quote values - directly add them to the CSV
+                        value = str(row.get(col, ""))
+                        csv_row.append(value)
+                    csv_data.append(";".join(csv_row))
+                
+                # Add CSV file to zip
+                safe_filename = filename.replace(' ', '_').replace('/', '_').replace('\\', '_')
+                # Remove .csv extension if it already exists to avoid double extension
+                if safe_filename.lower().endswith('.csv'):
+                    safe_filename = safe_filename[:-4]
+                zf.writestr(f"{safe_filename}.csv", "\n".join(csv_data))
+        
+        # Prepare response
+        memory_file.seek(0)
+        safe_upload_name = upload[1].replace(' ', '_').replace('/', '_').replace('\\', '_')
+        
+        response = Response(
+            memory_file.getvalue(),
+            mimetype="application/zip",
+            headers={
+                "Content-Disposition": f"attachment; filename={safe_upload_name}_traces.zip"
+            }
+        )
+        return response
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/upload/<int:upload_id>/export-to-sheets', methods=['GET'])
+def export_upload_to_sheets(upload_id):
+    """Export all traces from an upload to Google Sheets."""
+    try:
+        import tempfile
+        import os
+        import shutil
+        from upload_to_sheets import upload_csv_files
+        
+        # Get upload info
+        upload = db.get_upload(upload_id)
+        if not upload:
+            return jsonify({"error": "Upload not found"}), 404
+            
+        # Get all traces for this upload
+        traces = db.get_traces_for_upload(upload_id)
+        if not traces or len(traces) == 0:
+            return jsonify({"error": "No traces found for this upload"}), 404
+            
+        # Create a temporary directory to store CSV files
+        temp_dir = tempfile.mkdtemp()
+        spreadsheet_url = ""
+        
+        try:
+            # Generate CSV files for each trace
+            for trace in traces:
+                trace_id, filename, sheet_name, error, row_count = trace
+                
+                # Skip traces with errors
+                if error:
+                    continue
+                
+                # Get columns and values
+                columns = db.get_columns(trace_id)
+                values = db.get_values(trace_id)
+                
+                if not values or len(values) == 0:
+                    continue
+                
+                # Generate CSV data
+                csv_data = []
+                csv_data.append(";".join(columns))
+                
+                for row in values:
+                    csv_row = []
+                    for col in columns:
+                        # Don't quote values - directly add them to the CSV
+                        value = str(row.get(col, ""))
+                        csv_row.append(value)
+                    csv_data.append(";".join(csv_row))
+                
+                # Create CSV file in temp directory
+                safe_filename = filename.replace(' ', '_').replace('/', '_').replace('\\', '_')
+                # Remove .csv extension if it already exists to avoid double extension
+                if safe_filename.lower().endswith('.csv'):
+                    safe_filename = safe_filename[:-4]
+                    
+                csv_path = os.path.join(temp_dir, f"{safe_filename}.csv")
+                with open(csv_path, 'w', encoding='utf-8') as f:
+                    f.write("\n".join(csv_data))
+            
+            # Upload all CSV files to Google Sheets
+            safe_upload_name = upload[1].replace(' ', '_').replace('/', '_').replace('\\', '_')
+            spreadsheet_title = f"{safe_upload_name}_traces"
+            
+            # Get spreadsheet URL from the upload function
+            result = upload_csv_files(temp_dir, spreadsheet_title)
+            spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{result}" if result else ""
+            
+            return jsonify({
+                "success": True, 
+                "message": "Traces exported to Google Sheets successfully", 
+                "spreadsheet_url": spreadsheet_url
+            })
+            
+        finally:
+            # Clean up temporary directory
+            shutil.rmtree(temp_dir)
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -272,6 +568,7 @@ def main():
     import webbrowser
     import threading
     import argparse
+    import os
     
     parser = argparse.ArgumentParser(description='TT-NN Trace Viewer')
     parser.add_argument('--no-browser', action='store_true', help='Do not open browser automatically')
@@ -281,7 +578,12 @@ def main():
     port = 5000
     url = f'http://{host}:{port}'
     
-    if not args.no_browser:
+    # Check if this is the initial run or a reload
+    # WERKZEUG_RUN_MAIN environment variable is set when Flask's reloader
+    # restarts the app, so we only open the browser on the initial run
+    is_reload = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
+    
+    if not args.no_browser and not is_reload:
         # Open browser after a short delay to ensure Flask has started
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
         print(f"Opening browser at {url} (use --no-browser to disable)")

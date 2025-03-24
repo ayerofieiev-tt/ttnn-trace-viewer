@@ -3,12 +3,26 @@
 let editorIsNew = false;
 let currentParserName = '';
 let monacoEditor = null;
+let monacoLoaded = false;
 
-// Initialize Monaco Editor
-require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' }});
-require(['vs/editor/editor.main'], function() {
-    // Monaco is now loaded and ready to be used
-});
+// Initialize Monaco Editor conditionally
+if (!window.monacoRequireConfigDone) {
+    window.monacoRequireConfigDone = true;
+    require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' }});
+}
+
+// Load Monaco only when needed, not on page load
+function loadMonacoIfNeeded(callback) {
+    if (monacoLoaded) {
+        callback();
+        return;
+    }
+    
+    require(['vs/editor/editor.main'], function() {
+        monacoLoaded = true;
+        callback();
+    });
+}
 
 // Load custom parsers from the server
 function loadCustomParsers() {
@@ -268,21 +282,24 @@ function testParser(name) {
 
 // Open the parser editor modal
 function openParserEditor(code = '') {
-    // Initialize Monaco editor if needed
-    if (!monacoEditor) {
-        initializeMonacoEditor(code);
-    } else {
-        monacoEditor.setValue(code);
-    }
+    // Show the modal
+    document.getElementById('parserEditorModal').style.display = 'flex';
     
     // Set default test input
     document.getElementById('testInput').value = 'Tensor[8x384x1024|BFLOAT16|INTERLEAVED|L1]';
     
-    // Show the modal
-    document.getElementById('parserEditorModal').style.display = 'flex';
-    
-    // Extract function name on load
-    setTimeout(extractFunctionName, 100);
+    // Load Monaco and initialize the editor
+    loadMonacoIfNeeded(function() {
+        // Initialize Monaco editor if needed
+        if (!monacoEditor) {
+            initializeMonacoEditor(code);
+        } else {
+            monacoEditor.setValue(code);
+        }
+        
+        // Extract function name on load
+        setTimeout(extractFunctionName, 100);
+    });
 }
 
 // Close the parser editor modal
@@ -295,6 +312,13 @@ function closeParserEditor() {
 function initializeMonacoEditor(code = '') {
     if (monacoEditor) {
         monacoEditor.dispose();
+    }
+    
+    // Make sure monaco is defined before using it
+    if (typeof monaco === 'undefined') {
+        console.error('Monaco is not loaded yet');
+        showToast('Editor failed to load. Please try again.', 'error');
+        return null;
     }
     
     monacoEditor = monaco.editor.create(document.getElementById('editorContainer'), {
@@ -401,7 +425,10 @@ function initializeMonacoEditor(code = '') {
 
 // Extract function name from the code
 function extractFunctionName() {
-    if (!monacoEditor) return;
+    if (!monacoEditor) {
+        console.warn('Editor not initialized yet, cannot extract function name');
+        return;
+    }
     
     const code = monacoEditor.getValue();
     
@@ -432,6 +459,12 @@ function extractFunctionName() {
 
 // Test the parser in the editor
 function testParserInEditor() {
+    // Check if editor is initialized
+    if (!monacoEditor) {
+        showToast('Editor is not ready yet. Please try again.', 'error');
+        return;
+    }
+    
     const code = monacoEditor.getValue();
     const testInput = document.getElementById('testInput').value;
     const resultElement = document.getElementById('testResult');
@@ -456,6 +489,12 @@ function testParserInEditor() {
 
 // Save the parser from the editor
 function saveParser() {
+    // Check if editor is initialized
+    if (!monacoEditor) {
+        showToast('Editor is not ready yet. Please try again.', 'error');
+        return;
+    }
+    
     const code = monacoEditor.getValue();
     let name = document.getElementById('parserName').value.trim();
     

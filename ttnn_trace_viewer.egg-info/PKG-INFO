@@ -1,3 +1,28 @@
+Metadata-Version: 2.4
+Name: ttnn_trace_viewer
+Version: 0.1.0
+Summary: A tool for capturing and analyzing trace data
+Home-page: https://github.com/ayerofieiev-tt/ttnn-trace-viewer
+Author: TTNN Capture Team
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+Requires-Dist: google-api-python-client
+Requires-Dist: google-auth-httplib2
+Requires-Dist: google-auth-oauthlib
+Requires-Dist: pandas
+Requires-Dist: flask
+Dynamic: author
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
 # TT-NN Capture Viewer
 
 A comprehensive tool dedicated to processing output of TT-NN Graph Tracing. With this tool, you can quickly process what operations are called, with what arguments, and can easily filter through data from single or multiple runs.
@@ -10,7 +35,6 @@ A comprehensive tool dedicated to processing output of TT-NN Graph Tracing. With
 - **Flexible Data Processing**: Filter, sort, and analyze operation data efficiently
 - **Custom Parsers**: Create and save custom parsers for your specific analysis needs
 - **Automatic Browser Launch**: Viewer automatically opens in your default browser
-- **Smart JSON Processing**: Automatically detects and processes both raw and pre-processed JSON formats
 
 ## Installation
 
@@ -146,63 +170,4 @@ The first time you run this, it will open a browser for authentication. Your cre
 
 - Data is stored in a SQLite database (`traces.db`) by default
 - The web viewer provides both upload-based and consolidated views of your trace data
-- Custom parsers allow for advanced analysis directly in the viewer
-
-## JSON Format Support
-
-The tool now supports two different JSON formats:
-
-### 1. Raw JSON Format
-
-This format contains the raw graph structure with connections and arguments:
-
-```json
-[
-    {
-        "arguments": [...],
-        "connections": [...],
-        "params": {
-            "name": "operation_name",
-            ...
-        }
-    },
-    ...
-]
-```
-
-When uploading a file in this format, it will be automatically processed using `GraphTracerUtils.serialize_graph()` before converting to CSV.
-
-### 2. Processed JSON Format
-
-This format has already been processed and contains a "content" key with a list of operations:
-
-```json
-{
-    "content": [
-        {
-            "operation": "operation_name",
-            "arguments": [...]
-        },
-        ...
-    ]
-}
-```
-
-Files in this format will be directly converted to CSV without additional processing.
-
-## Command Line Tools
-
-### JSON Processor Tool
-
-You can use the JSON processor directly from the command line:
-
-```bash
-python json_processor.py input.json [output_file] [--csv] [--group] [--no-duplicates]
-```
-
-Arguments:
-- `input.json` - Input JSON file (raw or processed format)
-- `output_file` - Optional output file path
-- `--csv` - Output in CSV format instead of JSON
-- `--group` - Group operations by name (CSV only)
-- `--no-duplicates` - Remove duplicate entries (CSV only) 
+- Custom parsers allow for advanced analysis directly in the viewer 

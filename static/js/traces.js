@@ -4,13 +4,13 @@
 let columnWidths = {};
 
 // Make sure columnFilters is initialized
-if (typeof columnFilters === 'undefined') {
-    var columnFilters = {};
+if (typeof window.columnFilters === 'undefined') {
+    window.columnFilters = {};
 }
 
 // Debug helper to print all active filters
 function printFilters() {
-    console.log("Active filters:", JSON.stringify(columnFilters, null, 2));
+    console.log("Active filters:", JSON.stringify(window.columnFilters, null, 2));
 }
 window.printFilters = printFilters;
 
@@ -28,6 +28,7 @@ function selectTrace(traceId, uploadId) {
     // Load trace data
     loadTraceData(traceId, uploadId);
 }
+window.selectTrace = selectTrace;
 
 // Select a trace in consolidated view
 function selectConsolidatedTrace(traceId) {
@@ -43,17 +44,19 @@ function selectConsolidatedTrace(traceId) {
     // Load consolidated trace data
     loadConsolidatedTraceData(traceId);
 }
+window.selectConsolidatedTrace = selectConsolidatedTrace;
 
 // Load trace data for by-upload view
 function loadTraceData(traceId, uploadId) {
     fetch(`/api/trace/${traceId}/values?upload_id=${uploadId}`)
         .then(response => response.json())
         .then(data => {
-            currentTrace = data;
+            window.currentTrace = data;
             displayTraceData(data);
             populateColumnsList(data);
         });
 }
+window.loadTraceData = loadTraceData;
 
 // Load trace data for consolidated view
 function loadConsolidatedTraceData(traceId) {
@@ -76,7 +79,7 @@ function loadConsolidatedTraceData(traceId) {
             };
             
             // Update the UI
-            currentTrace = processedData;
+            window.currentTrace = processedData;
             displayConsolidatedTraceData(processedData);
             populateColumnsList(processedData);
         })
@@ -90,6 +93,7 @@ function loadConsolidatedTraceData(traceId) {
             `;
         });
 }
+window.loadConsolidatedTraceData = loadConsolidatedTraceData;
 
 // Helper function to extract uploads from events
 function extractUploadsFromEvents(events) {
@@ -199,7 +203,11 @@ function displayTraceData(traceData) {
     let html = `
         <div class="trace-header-container">
             <h2>Trace Data</h2>
-            <div class="trace-name-badge">${traceData.name || traceData.filename || ''}</div>
+            <div class="export-actions">
+                <button class="btn btn-sm btn-outline-primary" onclick="exportVisibleDataToCSV('${traceData.id || ''}', false)">
+                    <i class="bi bi-download"></i> Export CSV
+                </button>
+            </div>
         </div>
         <div class="trace-stats">
             ${traceData.length || 0} events
@@ -240,8 +248,12 @@ function displayConsolidatedTraceData(traceData) {
     // Create container for consolidated trace data
     let html = `
         <div class="trace-header-container">
-            <h2>Consolidated Trace</h2>
-            <div class="trace-name-badge">${traceData.name || ''}</div>
+            <h2>Consolidated Trace</h2>            
+            <div class="export-actions">
+                <button class="btn btn-sm btn-outline-primary" onclick="exportVisibleDataToCSV('${encodeURIComponent(traceData.name || '')}', true)">
+                    <i class="bi bi-download"></i> Export CSV
+                </button>
+            </div>
         </div>
         <div class="trace-stats">
             ${uploadCount} uploads, ${eventCount} total events
@@ -370,7 +382,7 @@ function sortColumns(columns) {
 // Function to filter events based on column filters from the right panel
 function filterEvents() {
     // No column-filter elements in headers anymore, using columnFilters object
-    if (Object.keys(columnFilters).length === 0) {
+    if (Object.keys(window.columnFilters).length === 0) {
         // No filters active, show all events
         document.querySelectorAll('tr.event-row').forEach(row => {
             row.style.display = '';
@@ -379,14 +391,14 @@ function filterEvents() {
         return;
     }
     
-    console.log("Applying filters:", columnFilters);
+    console.log("Applying filters:", window.columnFilters);
     
     // Apply filters
     document.querySelectorAll('tr.event-row').forEach(row => {
         let visible = true;
         
-        for (const column in columnFilters) {
-            const filterText = columnFilters[column] && columnFilters[column].trim();
+        for (const column in window.columnFilters) {
+            const filterText = window.columnFilters[column] && window.columnFilters[column].trim();
             if (!filterText) continue; // Skip empty filters
             
             const cellValue = row.querySelector(`td[data-column="${column}"]`)?.textContent || '';
@@ -857,7 +869,7 @@ function populateColumnsList(traceData) {
             <input type="text" class="filter-input" 
                    id="column-filter-${column}" 
                    placeholder="Filter ${column}..."
-                   value="${columnFilters[column] || ''}">
+                   value="${window.columnFilters[column] || ''}">
         `;
         
         columnsListContainer.appendChild(columnItem);
@@ -872,9 +884,9 @@ function populateColumnsList(traceData) {
                 // Store the filter value
                 if (filterValue === '') {
                     // Remove empty filters
-                    delete columnFilters[column];
+                    delete window.columnFilters[column];
                 } else {
-                    columnFilters[column] = filterValue;
+                    window.columnFilters[column] = filterValue;
                 }
                 
                 // Apply filters to current view without redrawing everything
@@ -888,11 +900,11 @@ function populateColumnsList(traceData) {
             const filterValue = this.value.trim();
             
             // Only update if value actually changed
-            if (filterValue === '' && columnFilters[column]) {
-                delete columnFilters[column];
+            if (filterValue === '' && window.columnFilters[column]) {
+                delete window.columnFilters[column];
                 filterEvents();
-            } else if (filterValue !== '' && columnFilters[column] !== filterValue) {
-                columnFilters[column] = filterValue;
+            } else if (filterValue !== '' && window.columnFilters[column] !== filterValue) {
+                window.columnFilters[column] = filterValue;
                 filterEvents();
             }
         });
@@ -917,7 +929,7 @@ function updateCommonFilter() {
     if (filterText) {
         try {
             // Create a function from the filter text
-            commonFilterFn = new Function('row', `
+            window.commonFilterFn = new Function('row', `
                 try {
                     // Make all parsers available in this scope
                     ${Object.keys(window).filter(key => 
@@ -932,21 +944,21 @@ function updateCommonFilter() {
                 }
             `);
             
-            showToast('Filter applied successfully');
+            window.showToast('Filter applied successfully');
         } catch (error) {
-            commonFilterFn = null;
-            showToast(`Invalid filter: ${error.message}`, 'error');
+            window.commonFilterFn = null;
+            window.showToast(`Invalid filter: ${error.message}`, 'error');
         }
     } else {
-        commonFilterFn = null;
+        window.commonFilterFn = null;
     }
     
     // Re-display the current trace with the filter applied
-    if (currentTrace) {
-        if (viewMode === 'consolidated') {
-            displayConsolidatedTraceData(currentTrace);
+    if (window.currentTrace) {
+        if (window.viewMode === 'consolidated') {
+            displayConsolidatedTraceData(window.currentTrace);
         } else {
-            displayTraceData(currentTrace);
+            displayTraceData(window.currentTrace);
         }
     }
 }
@@ -1009,4 +1021,282 @@ function testFilter(column, filterExpression, cellValue) {
 }
 
 // Make debug function available globally
-window.testFilter = testFilter; 
+window.testFilter = testFilter;
+
+// Export visible data to CSV
+function exportVisibleDataToCSV(traceIdentifier, isConsolidated) {
+    console.log('Export CSV clicked', { traceIdentifier, isConsolidated });
+    
+    // Get the visible rows from the current table
+    const visibleRows = Array.from(document.querySelectorAll('tr.event-row:not([style*="display: none"])'));
+    console.log('Visible rows:', visibleRows.length);
+    
+    if (visibleRows.length === 0) {
+        showToast('error', 'No data to export');
+        return;
+    }
+    
+    // Get the column headers from the table
+    const headers = Array.from(document.querySelectorAll('th.sortable')).map(th => th.dataset.column);
+    console.log('Headers:', headers);
+    
+    // Extract data from visible rows
+    const exportData = [];
+    visibleRows.forEach(row => {
+        const rowData = {};
+        headers.forEach(header => {
+            const cell = row.querySelector(`td[data-column="${header}"]`);
+            rowData[header] = cell ? cell.textContent : '';
+        });
+        exportData.push(rowData);
+    });
+    console.log('Export data sample:', exportData.slice(0, 2));
+    
+    // Generate CSV directly in the browser
+    if (exportData.length > 0) {
+        // Create CSV content
+        const csvContent = [
+            // Headers
+            headers.join(','),
+            // Data rows
+            ...exportData.map(row => 
+                headers.map(header => {
+                    const value = row[header] || '';
+                    // Escape commas and quotes
+                    return /[",\n]/.test(value) 
+                        ? `"${value.replace(/"/g, '""')}"` 
+                        : value;
+                }).join(',')
+            )
+        ].join('\n');
+        
+        // Create a blob and download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        
+        // Generate filename
+        let filename = 'export.csv';
+        if (traceIdentifier) {
+            filename = `trace_${traceIdentifier}${isConsolidated ? '_consolidated' : ''}_filtered.csv`;
+        } else {
+            const currentDate = new Date().toISOString().split('T')[0];
+            filename = `trace_export_${currentDate}.csv`;
+        }
+        
+        downloadLink.setAttribute('download', filename);
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(url);
+        
+        showToast('CSV export successful');
+    } else {
+        showToast('error', 'No data to export');
+    }
+}
+window.exportVisibleDataToCSV = exportVisibleDataToCSV;
+
+// Update the existing export functions to accept exportData parameter
+function exportFilteredTraceToCSV(traceId, exportData) {
+    console.log('exportFilteredTraceToCSV called with traceId:', traceId);
+    
+    if (!exportData || exportData.length === 0) {
+        console.error('No export data provided');
+        showToast('error', 'Export failed: No data to export');
+        return;
+    }
+    
+    // Get the current column filters
+    const filters = window.columnFilters || {};
+    console.log('Using filters:', filters);
+    
+    // If we have a valid traceId, use the server endpoint
+    if (traceId && !isNaN(parseInt(traceId, 10))) {
+        // Convert string traceId to number if needed
+        if (typeof traceId === 'string') {
+            traceId = parseInt(traceId, 10);
+            console.log('Converted traceId to number:', traceId);
+        }
+        
+        // Send the filters to the server to get filtered data
+        console.log('Sending request to:', `/api/trace/${traceId}/export-filtered-csv`);
+        fetch(`/api/trace/${traceId}/export-filtered-csv`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                columnFilters: filters,
+                exportData: exportData
+            })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to export filtered CSV');
+            }
+            
+            // Get filename from Content-Disposition header
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = 'export.csv';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (filenameMatch && filenameMatch[1]) {
+                    filename = filenameMatch[1];
+                }
+            }
+            
+            // Convert response to blob and create download link
+            return response.blob().then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = url;
+                downloadLink.download = filename;
+                downloadLink.style.display = 'none';
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(downloadLink);
+            });
+        })
+        .catch(error => {
+            console.error('Error exporting filtered CSV:', error);
+            // Show error toast
+            showToast('error', `Failed to export filtered CSV: ${error.message}`);
+        });
+    } else {
+        // If no valid traceId, create and download CSV directly in browser
+        const headers = Object.keys(exportData[0]);
+        const csvContent = [
+            // Headers
+            headers.join(','),
+            // Data rows
+            ...exportData.map(row => 
+                headers.map(header => {
+                    const value = row[header] || '';
+                    // Escape commas and quotes
+                    return /[",\n]/.test(value) 
+                        ? `"${value.replace(/"/g, '""')}"` 
+                        : value;
+                }).join(',')
+            )
+        ].join('\n');
+        
+        // Create a blob and download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        
+        // Generate filename
+        const currentDate = new Date().toISOString().split('T')[0];
+        const filename = `trace_export_${currentDate}.csv`;
+        
+        downloadLink.setAttribute('download', filename);
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(url);
+        
+        showToast('CSV export successful');
+    }
+}
+
+function exportFilteredConsolidatedTraceToCSV(filename, exportData) {
+    console.log('exportFilteredConsolidatedTraceToCSV called with filename:', filename);
+    
+    if (!exportData || exportData.length === 0) {
+        console.error('No export data provided');
+        showToast('error', 'Export failed: No data to export');
+        return;
+    }
+    
+    // Get the current column filters
+    const filters = window.columnFilters || {};
+    console.log('Using filters:', filters);
+    
+    // If we have a valid filename, use the server endpoint
+    if (filename) {
+        // Send the filters to the server to get filtered data
+        console.log('Sending request to:', `/api/consolidated-trace/${filename}/export-filtered-csv`);
+        fetch(`/api/consolidated-trace/${filename}/export-filtered-csv`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                columnFilters: filters,
+                exportData: exportData
+            })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to export filtered CSV');
+            }
+            
+            // Get filename from Content-Disposition header
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let outputFilename = 'export.csv';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (filenameMatch && filenameMatch[1]) {
+                    outputFilename = filenameMatch[1];
+                }
+            }
+            
+            // Convert response to blob and create download link
+            return response.blob().then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = url;
+                downloadLink.download = outputFilename;
+                downloadLink.style.display = 'none';
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(downloadLink);
+            });
+        })
+        .catch(error => {
+            console.error('Error exporting filtered CSV:', error);
+            // Show error toast
+            showToast('error', `Failed to export filtered CSV: ${error.message}`);
+        });
+    } else {
+        // If no valid filename, create and download CSV directly in browser
+        const headers = Object.keys(exportData[0]);
+        const csvContent = [
+            // Headers
+            headers.join(','),
+            // Data rows
+            ...exportData.map(row => 
+                headers.map(header => {
+                    const value = row[header] || '';
+                    // Escape commas and quotes
+                    return /[",\n]/.test(value) 
+                        ? `"${value.replace(/"/g, '""')}"` 
+                        : value;
+                }).join(',')
+            )
+        ].join('\n');
+        
+        // Create a blob and download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        
+        // Generate filename
+        const currentDate = new Date().toISOString().split('T')[0];
+        const filename = `consolidated_trace_export_${currentDate}.csv`;
+        
+        downloadLink.setAttribute('download', filename);
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(url);
+        
+        showToast('CSV export successful');
+    }
+} 
