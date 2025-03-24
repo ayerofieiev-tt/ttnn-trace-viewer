@@ -2,6 +2,7 @@ from flask import Flask, render_template, jsonify, request, flash, Response
 from trace_db import TraceDB
 import json
 import os
+import time
 from werkzeug.utils import secure_filename
 from store_traces import process_json_file
 
@@ -15,6 +16,21 @@ ALLOWED_EXTENSIONS = {'json'}
 # Ensure upload directory exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Track active uploads with timestamps
+active_uploads = {}
+
+# Clean stale uploads periodically
+def clean_stale_uploads():
+    """Remove stale uploads from tracking (older than 10 minutes)"""
+    current_time = time.time()
+    stale_keys = []
+    for key, timestamp in active_uploads.items():
+        if current_time - timestamp > 600:  # 10 minutes
+            stale_keys.append(key)
+    
+    for key in stale_keys:
+        active_uploads.pop(key, None)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -400,6 +416,35 @@ def export_upload_to_sheets(upload_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/uploads/status', methods=['GET'])
+def get_upload_status():
+    """Check if there are any active uploads."""
+    # Clean stale uploads first
+    clean_stale_uploads()
+    
+    # Get client IP for more accurate tracking
+    client_ip = request.remote_addr
+    
+    # Check if this client has any active uploads
+    client_uploads = []
+    for key in list(active_uploads.keys()):
+        if key.startswith(f"{client_ip}_"):
+            client_uploads.append(key.split('_', 1)[1])
+    
+    # Build response
+    response = {
+        'uploading': bool(active_uploads) and bool(client_uploads),
+        'uploads': client_uploads,
+        'server_time': time.time()
+    }
+    
+    # Ensure proper cache headers
+    resp = jsonify(response)
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -421,6 +466,11 @@ def upload_file():
         filename = secure_filename(file.filename)
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         
+        # Track this upload with client IP for more accurate tracking
+        client_ip = request.remote_addr
+        upload_id = f"{client_ip}_{upload_name}_{filename}"
+        active_uploads[upload_id] = time.time()
+        
         # Save the uploaded file
         file.save(file_path)
         
@@ -428,17 +478,24 @@ def upload_file():
         if process_json_file(file_path, upload_name):
             # Clean up the temporary file
             os.remove(file_path)
+            # Remove from active uploads
+            active_uploads.pop(upload_id, None)
             return jsonify({
                 'success': True,
                 'message': 'File successfully processed and stored in the database'
             })
         else:
+            # Remove from active uploads
+            active_uploads.pop(upload_id, None)
             return jsonify({
                 'success': False,
                 'error': 'Failed to process the file'
             }), 500
             
     except Exception as e:
+        # Remove from active uploads if there was an error
+        upload_id = f"{client_ip}_{upload_name}_{filename}" if 'filename' in locals() else f"{client_ip}_{upload_name}_error"
+        active_uploads.pop(upload_id, None)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/upload/<int:upload_id>/rename', methods=['POST'])
@@ -562,6 +619,21 @@ def delete_parser(parser_id):
             return jsonify({'success': False, 'error': 'Failed to delete parser'}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/debug/active-uploads', methods=['GET'])
+def debug_active_uploads():
+    """Debug endpoint to view active uploads."""
+    clean_stale_uploads()
+    client_ip = request.remote_addr
+    
+    return jsonify({
+        'active_uploads': active_uploads,
+        'client_ip': client_ip,
+        'all_active_count': len(active_uploads),
+        'client_active_uploads': {k: v for k, v in active_uploads.items() if k.startswith(f"{client_ip}_")},
+        'server_time': time.time(),
+        'server_time_human': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    })
 
 def main():
     """Entry point for the trace viewer application."""

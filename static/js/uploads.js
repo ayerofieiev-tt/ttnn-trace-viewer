@@ -1,5 +1,11 @@
 // Uploads Handling for TT-NN Trace Viewer
 
+// Global state for tracking in-progress operations
+window.operationsInProgress = {
+    export: {},
+    upload: false
+};
+
 // Load all uploads from the server
 function loadUploads() {
     fetch(`/api/uploads?mode=${window.viewMode}`)
@@ -368,6 +374,18 @@ function deleteUpload(uploadId) {
 
 // Export all traces from an upload as CSV
 function exportUploadToCSV(uploadId, uploadName) {
+    // Check if export is already in progress for this upload
+    if (window.operationsInProgress.export[uploadId]) {
+        showToast(`Export for "${uploadName}" already in progress`, 'warning');
+        return;
+    }
+    
+    // Mark this upload as having an export in progress
+    window.operationsInProgress.export[uploadId] = true;
+    
+    // Save to localStorage
+    saveOperationStatusToLocalStorage();
+    
     // Show loading toast and disable the export button
     const loadingToastId = showToast(`<div><i class="bi bi-arrow-clockwise spin"></i> Preparing CSV export for "${uploadName}"...</div>`, 'info', 0, true);
     
@@ -378,7 +396,7 @@ function exportUploadToCSV(uploadId, uploadName) {
     notificationBar.innerHTML = `<i class="bi bi-arrow-clockwise spin"></i> Preparing CSV export for "${uploadName}". Please wait...`;
     document.body.prepend(notificationBar);
     
-    // Attempt to find and disable export buttons, but don't rely on it
+    // Disable export buttons
     try {
         const exportButtons = document.querySelectorAll(`#upload-${uploadId} button`);
         exportButtons.forEach(btn => {
@@ -390,9 +408,6 @@ function exportUploadToCSV(uploadId, uploadName) {
     } catch (e) {
         console.warn('Could not disable export buttons:', e);
     }
-    
-    // Log to console to confirm the export has started
-    console.log(`Starting CSV export for upload ${uploadId}: ${uploadName}`);
     
     const downloadUrl = `/api/upload/${uploadId}/export-csv`;
     
@@ -434,11 +449,29 @@ function exportUploadToCSV(uploadId, uploadName) {
         } catch (e) {
             console.warn('Could not re-enable export buttons:', e);
         }
+        
+        // Mark this upload as no longer having an export in progress
+        window.operationsInProgress.export[uploadId] = false;
+        
+        // Update localStorage
+        saveOperationStatusToLocalStorage();
     }, 800); // Short delay to show the loading state
 }
 
 // Export all traces from an upload to Google Sheets
 function exportUploadToGoogleSheets(uploadId, uploadName) {
+    // Check if export is already in progress for this upload
+    if (window.operationsInProgress.export[uploadId]) {
+        showToast(`Export for "${uploadName}" already in progress`, 'warning');
+        return;
+    }
+    
+    // Mark this upload as having an export in progress
+    window.operationsInProgress.export[uploadId] = true;
+    
+    // Save to localStorage
+    saveOperationStatusToLocalStorage();
+    
     // Create a notification that will stay visible until process completes
     const loadingToastId = showToast(
         `<div><i class="bi bi-arrow-clockwise spin"></i> Exporting traces from "${uploadName}" to Google Sheets...</div>`, 
@@ -454,7 +487,7 @@ function exportUploadToGoogleSheets(uploadId, uploadName) {
     notificationBar.innerHTML = `<i class="bi bi-arrow-clockwise spin"></i> Exporting "${uploadName}" to Google Sheets. Please wait...`;
     document.body.prepend(notificationBar);
     
-    // Attempt to find and disable export buttons, but don't rely on it
+    // Disable export buttons
     try {
         const dropdownMenus = document.querySelectorAll(`.custom-dropdown-menu`);
         dropdownMenus.forEach(menu => {
@@ -470,9 +503,6 @@ function exportUploadToGoogleSheets(uploadId, uploadName) {
         console.warn('Could not disable export buttons:', e);
     }
     
-    // Log to console to confirm the export has started
-    console.log(`Starting Google Sheets export for upload ${uploadId}: ${uploadName}`);
-    
     fetch(`/api/upload/${uploadId}/export-to-sheets`)
         .then(response => {
             if (!response.ok) {
@@ -484,6 +514,12 @@ function exportUploadToGoogleSheets(uploadId, uploadName) {
             // Clear notifications
             document.getElementById(loadingToastId)?.remove();
             document.getElementById('sheets-export-notification')?.remove();
+            
+            // Mark this upload as no longer having an export in progress
+            window.operationsInProgress.export[uploadId] = false;
+            
+            // Update localStorage
+            saveOperationStatusToLocalStorage();
             
             // Re-enable buttons
             try {
@@ -547,6 +583,12 @@ function exportUploadToGoogleSheets(uploadId, uploadName) {
             document.getElementById(loadingToastId)?.remove();
             document.getElementById('sheets-export-notification')?.remove();
             
+            // Mark this upload as no longer having an export in progress
+            window.operationsInProgress.export[uploadId] = false;
+            
+            // Update localStorage
+            saveOperationStatusToLocalStorage();
+            
             // Re-enable buttons
             try {
                 const dropdownMenus = document.querySelectorAll(`.custom-dropdown-menu`);
@@ -568,6 +610,22 @@ function exportUploadToGoogleSheets(uploadId, uploadName) {
         });
 }
 
+// Save operation status to localStorage
+function saveOperationStatusToLocalStorage() {
+    try {
+        localStorage.setItem('operationsInProgress', JSON.stringify({
+            upload: window.operationsInProgress.upload,
+            exportIds: Object.keys(window.operationsInProgress.export).filter(
+                id => window.operationsInProgress.export[id]
+            ),
+            lastUpdated: new Date().getTime()
+        }));
+    } catch (e) {
+        console.warn('Could not save operation status to localStorage:', e);
+    }
+}
+
 // Make the functions available globally
 window.exportUploadToCSV = exportUploadToCSV;
-window.exportUploadToGoogleSheets = exportUploadToGoogleSheets; 
+window.exportUploadToGoogleSheets = exportUploadToGoogleSheets;
+window.saveOperationStatusToLocalStorage = saveOperationStatusToLocalStorage; 
