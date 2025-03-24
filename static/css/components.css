@@ -108,10 +108,16 @@
     color: #6c757d;
     font-size: 0.85em;
     white-space: nowrap;
+    margin-left: 10px;
 }
 
 .upload-name {
     cursor: pointer;
+    flex: 1;
+    min-width: 0; /* Needed for text-truncate to work properly */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .upload-name:hover {

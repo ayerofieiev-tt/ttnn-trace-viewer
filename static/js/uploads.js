@@ -129,8 +129,8 @@ function displayUploadsList(traceFilter = '') {
             const uploadHeader = document.createElement('div');
             uploadHeader.className = 'upload-header';
             uploadHeader.innerHTML = `
-                <div class="upload-name" onclick="renameUpload(${upload.id}, event)">${upload.name || 'Unnamed Upload'}</div>
-                <div class="upload-count">${filteredTraces.length} traces</div>
+                <div class="upload-name text-truncate" onclick="renameUpload(${upload.id}, event)" title="${upload.name || 'Unnamed Upload'}">${upload.name || 'Unnamed Upload'}</div>
+                <div class="upload-count flex-shrink-0">${filteredTraces.length} traces</div>
             `;
             uploadHeader.addEventListener('click', function(e) {
                 if (e.target.classList.contains('upload-name')) return;
